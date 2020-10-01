@@ -1,2 +1,12 @@
+[package]
+name = "game-rs"
+version = "0.1.0"
+authors = ["Christian De la Hoz <christian.hoz@anixe.pl>"]
+edition = "2018"
+
 [workspace]
-members = ["engine", "game", "runner"]
+members = ["engine", "game"]
+
+[dependencies]
+engine = { path = "./engine" }
+game = { path = "./game" }

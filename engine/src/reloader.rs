@@ -1,10 +1,11 @@
-use engine::*;
+// use engine::*;
 use libloading as lib;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
-use std::time::Duration;
+use super::host_api::HostApi;
+// use std::time::Duration;
 
 const LIBGAME: &str = "./target/release/libgame.so";
 
@@ -32,34 +33,43 @@ pub fn run() -> Result<(Receiver<()>, RecommendedWatcher), Box<dyn std::error::E
     Ok((rx, watcher))
 }
 
-pub struct Game {
-    pub api: GameApi,
+pub struct GameLib {
     lib: lib::Library,
 }
 
-impl Game {
-    pub fn reload() -> Result<Self, Box<dyn std::error::Error>> {
+impl GameLib {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let lib = lib::Library::new(LIBGAME)?;
-        let api: Result<_, Box<dyn std::error::Error>> = unsafe {
-            let init = *(lib.get(b"game_init")?);
-            let update = *(lib.get(b"game_update")?);
+        Ok(Self { lib })
+    }
+
+    pub fn reload(self) -> Result<Self, Box<dyn std::error::Error>> {
+        std::mem::drop(self);
+        Ok(Self {
+            lib: lib::Library::new(LIBGAME)?,
+        })
+    }
+
+    pub fn api(&mut self) -> Result<GameApi<'_>, Box<dyn std::error::Error>> {
+        unsafe {
+            let init = self.lib.get(b"game_init")?;
+            let update = self.lib.get(b"game_update")?;
             Ok(GameApi { init, update })
-        };
-        Ok(Self { api: api?, lib })
+        }
     }
 }
 
-// #[repr(C)]
-// pub struct GameState {
-//     _private: [u8; 0],
-// }
+#[repr(C)]
+pub struct GameState {
+    _private: [u8; 0],
+}
 
-pub struct GameApi {
+pub struct GameApi<'lib> {
     /// Called on game start
-    pub init: unsafe extern "C" fn(u8) -> *mut engine::GameState,
+    pub init: lib::Symbol<'lib, fn(&dyn HostApi) -> *mut GameState>,
 
     /// Called on game loop. Returns `true` if the game continues running
-    pub update: unsafe extern "C" fn(*mut GameState) -> bool,
+    pub update: lib::Symbol<'lib, fn(*mut GameState, &mut dyn HostApi) -> bool>,
     // // Called on game exit
     // pub shutdown: lib::Symbol<'lib, fn(*mut GameState)>,
 
@@ -69,3 +79,4 @@ pub struct GameApi {
     // // Called on game reload
     // pub reload: lib::Symbol<'lib, fn(*mut GameState)>,
 }
+

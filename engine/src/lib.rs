@@ -8,14 +8,8 @@
 //     pub green_offset: usize,
 // }
 
-#[repr(C)]
-pub struct GameState {
-    pub offscreen_buffer: OffscreenBuffer,
-    pub blue_offset: usize,
-    pub green_offset: usize,
-}
+#[path="../../src/host_api.rs"]
+mod host_api;
 
-#[repr(C)]
-pub struct OffscreenBuffer {
-    pub buffer: Vec<u8>,
-}
+pub mod game_loop;
+pub mod reloader;

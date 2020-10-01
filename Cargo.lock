@@ -96,6 +96,12 @@ dependencies = [
 [[package]]
 name = "engine"
 version = "0.1.0"
+dependencies = [
+ "game",
+ "libloading",
+ "notify",
+ "sdl2",
+]
 
 [[package]]
 name = "filetime"
@@ -159,8 +165,13 @@ checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 [[package]]
 name = "game"
 version = "0.1.0"
+
+[[package]]
+name = "game-rs"
+version = "0.1.0"
 dependencies = [
  "engine",
+ "game",
 ]
 
 [[package]]
@@ -358,17 +369,6 @@ name = "regex-syntax"
 version = "0.6.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26412eb97c6b088a6997e05f69403a802a92d520de2f8e63c2b65f9e0f47c4e8"
-
-[[package]]
-name = "runner"
-version = "0.1.0"
-dependencies = [
- "engine",
- "game",
- "libloading",
- "notify",
- "sdl2",
-]
 
 [[package]]
 name = "same-file"
