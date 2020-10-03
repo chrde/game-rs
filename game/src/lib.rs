@@ -1,16 +1,21 @@
 #[path="../../src/host_api.rs"]
 mod host_api;
+mod render;
+
+pub use render::OffscreenBuffer;
 
 use host_api::HostApi;
 
 #[no_mangle]
 pub extern "C" fn game_init(host_api: &dyn HostApi) -> *mut GameState {
     let width = 800;
-    let pixel_format = 4;
+    let height = 600;
+    let bytes_per_pixel = 4;
     let offscreen_buffer = OffscreenBuffer {
-        buffer: vec![0; width * 600 * pixel_format],
+        buffer: vec![0; width * height * bytes_per_pixel],
         width,
-        pixel_format,
+        height,
+        bytes_per_pixel,
     };
     host_api.print("hola");
     let game = GameState {
@@ -30,13 +35,17 @@ pub extern "C" fn game_update(game_state: &mut GameState, host_api: &mut dyn Hos
     for y in 0..height {
         for x in 0..ob.width {
             // B G R A
-            let offset = y * ob.pitch() + ob.pixel_format * x;
-            ob.buffer[offset + 0] = (x + game_state.blue_offset) as u8;
-            ob.buffer[offset + 1] = (y + game_state.green_offset) as u8;
+            let offset = y * ob.pitch() + ob.bytes_per_pixel * x;
+            // ob.buffer[offset + 0] = (x + game_state.blue_offset) as u8;
+            // ob.buffer[offset + 1] = (y + game_state.green_offset) as u8;
+            ob.buffer[offset + 0] = 0;
+            ob.buffer[offset + 1] = 0;
             ob.buffer[offset + 2] = 0;
             ob.buffer[offset + 3] = 0;
         }
     }
+    ob.render_rectangle(10.0, 10.0, 100.0, 100.0, true);
+    ob.render_rectangle(10.0, 101.0, 100.0, 200.0, false);
     host_api.update_canvas(&ob.buffer, ob.pitch());
     // host_api.generate_audio();
     true
@@ -47,17 +56,4 @@ pub struct GameState {
     pub offscreen_buffer: OffscreenBuffer,
     pub blue_offset: usize,
     pub green_offset: usize,
-}
-
-#[repr(C)]
-pub struct OffscreenBuffer {
-    pub buffer: Vec<u8>,
-    width: usize,
-    pixel_format: usize,
-}
-
-impl OffscreenBuffer {
-    fn pitch(&self) -> usize {
-        self.width * self.pixel_format
-    }
 }

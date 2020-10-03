@@ -115,7 +115,7 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
         canvas.present();
         input.swap();
 
-        dbg!(start_frame.elapsed());
+        // dbg!(start_frame.elapsed());
         start_frame = Instant::now();
     }
     Ok(())
