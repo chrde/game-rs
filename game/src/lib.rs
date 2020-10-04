@@ -1,10 +1,12 @@
 #[path = "../../src/host_api.rs"]
 mod host_api;
 mod render;
+mod tile;
 
 use render::Color;
 pub use render::OffscreenBuffer;
 
+// use tile::*;
 use host_api::*;
 
 #[no_mangle]
