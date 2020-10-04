@@ -8,9 +8,9 @@ use sdl2::render::Texture;
 use sdl2::render::TextureCreator;
 use sdl2::video::WindowContext;
 // use std::marker::PhantomData;
+use super::host_api::*;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
-use super::host_api::HostApi;
 
 mod audio;
 mod input;
@@ -19,7 +19,6 @@ mod input;
 
 use super::reloader::*;
 use audio::Audio;
-use input::Input;
 
 fn new_texture(
     creator: &TextureCreator<WindowContext>,
@@ -52,8 +51,9 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
     let audio = Audio::new(sdl_context.audio()?)?;
 
     let window = video_subsystem
-        .window("rust-sdl2 demo", 800, 600)
+        .window("rust-sdl2 demo", 1920, 1080)
         .position_centered()
+        .resizable()
         .build()
         .unwrap();
 
@@ -62,17 +62,18 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
     let (width, height) = canvas.window().size();
     let texture = new_texture(&texture_creator, width, height)?;
 
-    let mut host_api = SdlHostApi {
-        texture,
-        audio,
-    };
+    let mut host_api = SdlHostApi { texture, audio };
 
     let mut game = GameLib::new().unwrap();
     let mut api = game.api().unwrap();
     let state = (api.init)(&host_api);
 
     host_api.audio.toggle();
-    let mut input = Input::default();
+    let mut input = Input{
+        new: Default::default(),
+        old: Default::default(),
+        time_per_frame: 1.0 / 60.0,
+    };
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut start_frame = Instant::now();
     'running: loop {
@@ -105,17 +106,19 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
                 },
                 _ => {}
             }
-            input.update(&event);
+            input::update(&mut input, &event);
         }
         // The rest of the game loop goes here...
 
-        (api.update)(state, &mut host_api);
+        (api.update)(state, &input, &mut host_api);
         canvas.clear();
         canvas.copy(&host_api.texture, None, None)?;
         canvas.present();
-        input.swap();
+        input::swap(&mut input);
 
-        // dbg!(start_frame.elapsed());
+        if false {
+            dbg!(start_frame.elapsed());
+        }
         start_frame = Instant::now();
     }
     Ok(())

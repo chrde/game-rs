@@ -4,7 +4,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
-use super::host_api::HostApi;
+use super::host_api::*;
 // use std::time::Duration;
 
 const LIBGAME: &str = "./target/release/libgame.so";
@@ -69,7 +69,7 @@ pub struct GameApi<'lib> {
     pub init: lib::Symbol<'lib, fn(&dyn HostApi) -> *mut GameState>,
 
     /// Called on game loop. Returns `true` if the game continues running
-    pub update: lib::Symbol<'lib, fn(*mut GameState, &mut dyn HostApi) -> bool>,
+    pub update: lib::Symbol<'lib, fn(*mut GameState, &Input, &mut dyn HostApi) -> bool>,
     // // Called on game exit
     // pub shutdown: lib::Symbol<'lib, fn(*mut GameState)>,
 

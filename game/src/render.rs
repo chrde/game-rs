@@ -1,5 +1,6 @@
 #[repr(C)]
 pub struct OffscreenBuffer {
+    // B G R A
     pub buffer: Vec<u8>,
     pub width: usize,
     pub height: usize,
@@ -12,8 +13,14 @@ impl OffscreenBuffer {
     }
 }
 
+pub struct Color {
+    pub red: f32,
+    pub green: f32,
+    pub blue: f32,
+}
+
 impl OffscreenBuffer {
-    pub fn render_rectangle(&mut self, minx: f32, miny: f32, maxx: f32, maxy: f32, b: bool) {
+    pub fn render_rectangle(&mut self, minx: f32, miny: f32, maxx: f32, maxy: f32, color: Color) {
         let miny = {
             let miny = miny.round() as i32;
             if miny < 0 {
@@ -53,14 +60,9 @@ impl OffscreenBuffer {
         for y in miny..maxy {
             for x in minx..maxx {
                 let offset = y * self.pitch() + self.bytes_per_pixel * x;
-                if b {
-                self.buffer[offset + 0] = 255;
-                } else {
-                self.buffer[offset + 0] = 0;
-
-                }
-                self.buffer[offset + 1] = 0;
-                self.buffer[offset + 2] = 255;
+                self.buffer[offset + 0] = (color.blue * 255.0).round() as u8;
+                self.buffer[offset + 1] = (color.green * 255.0).round() as u8;
+                self.buffer[offset + 2] = (color.red * 255.0).round() as u8;
                 self.buffer[offset + 3] = 0;
             }
         }
