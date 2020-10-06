@@ -20,6 +20,19 @@ pub struct Color {
 }
 
 impl OffscreenBuffer {
+    pub fn reset(&mut self) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let offset = y * self.pitch() + self.bytes_per_pixel * x;
+                // hideous magenta
+                self.buffer[offset + 0] = 255;
+                self.buffer[offset + 1] = 0;
+                self.buffer[offset + 2] = 255;
+                self.buffer[offset + 3] = 0;
+            }
+        }
+    }
+
     pub fn render_rectangle(&mut self, minx: f32, miny: f32, maxx: f32, maxy: f32, color: Color) {
         let miny = {
             let miny = miny.round() as i32;
@@ -39,17 +52,17 @@ impl OffscreenBuffer {
             }
         };
 
-        let maxx = {
-            let maxx = maxx.round() as i32;
-            if maxx > self.height as i32 {
-                self.height as usize
+        let max = {
+            let maxx = std::cmp::max(maxx.round() as i32, 0);
+            if maxx > self.width as i32 {
+                self.width as usize
             } else {
                 maxx as usize
             }
         };
 
         let maxy = {
-            let maxy = maxy.round() as i32;
+            let maxy = std::cmp::max(maxy.round() as i32, 0);
             if maxy > self.height as i32 {
                 self.height as usize
             } else {
@@ -58,7 +71,7 @@ impl OffscreenBuffer {
         };
 
         for y in miny..maxy {
-            for x in minx..maxx {
+            for x in minx..max {
                 let offset = y * self.pitch() + self.bytes_per_pixel * x;
                 self.buffer[offset + 0] = (color.blue * 255.0).round() as u8;
                 self.buffer[offset + 1] = (color.green * 255.0).round() as u8;

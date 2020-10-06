@@ -1,10 +1,10 @@
-#[derive(Copy, Clone)]
-struct TileRelPosition {
-    x: f32,
-    y: f32,
+#[derive(Copy, Clone, Debug)]
+pub struct Offset {
+    pub x: f32,
+    pub y: f32,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct TilePosition {
     x: usize,
     y: usize,
@@ -12,14 +12,14 @@ struct TilePosition {
 
 //high bits (tile_map.chunk_mask) -> chunk index in tile map
 //low bits (tile_map.chunk_shift) -> tile index in chunk
-#[derive(Copy, Clone, Eq, PartialEq)]
-struct CompressedPosition {
-    x: usize,
-    y: usize,
-    z: usize,
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct CompressedPosition {
+    pub x: usize,
+    pub y: usize,
+    pub z: usize,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct Position {
     x: usize,
     y: usize,
@@ -27,47 +27,62 @@ struct Position {
 }
 
 /// Position of tile in the global map
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct TileMapPosition {
-    chunk_position: CompressedPosition,
+    pub chunk_position: CompressedPosition,
 
     /// offset from tile center
-    rel_position: TileRelPosition,
+    pub offset: Offset,
 }
 
 impl TileMapPosition {
+    pub fn initial_player() -> Self {
+        Self {
+            chunk_position: CompressedPosition { x: 0, y: 0, z: 0 },
+            offset: Offset { x: -2.0, y: 0.0 },
+        }
+    }
+
     fn same_tile(&self, other: &Self) -> bool {
         self.chunk_position == other.chunk_position
     }
 }
 
 /// Position of tile in a chunk
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct ChunkPosition {
     position_in_map: Position,
 
     tile_position: TilePosition,
 }
 
+#[derive(Debug)]
 pub struct TileMap {
     chunk_shift: usize,
     chunk_mask: usize,
-    chunk_dim: u32,
-
+    // chunk_dim: u32,
     count_x: usize,
     count_y: usize,
     count_z: usize,
 
-    tile_side_in_meters: Meter,
+    pub tile_size: Meter,
     chunks: Vec<TileChunk>,
 }
 
+#[derive(Clone, Debug)]
 pub struct TileChunk {
     chunk_dim: usize,
     tiles: Vec<Tile>,
 }
 
 impl TileChunk {
+    fn new(chunk_dim: usize) -> Self {
+        Self {
+            chunk_dim,
+            tiles: vec![],
+        }
+    }
+
     fn offset(&self, position: TilePosition) -> usize {
         position.y * self.chunk_dim + position.x
     }
@@ -78,25 +93,98 @@ impl TileChunk {
 
     fn set_tile(&mut self, position: TilePosition, tile: Tile) {
         let offset = self.offset(position);
+        while self.tiles.len() <= offset {
+            self.tiles.push(Tile {
+                kind: TileKind::Empty,
+            });
+        }
         self.tiles[offset] = tile;
+        // self.tiles.push(tile);
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Tile {
-    kind: TileKind,
+    pub kind: TileKind,
 }
 
 //TODO what is the value of 2
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TileKind {
     Wall,
     Ground,
     Empty,
 }
 
-pub struct Meter(f32);
+#[derive(Copy, Clone, Debug)]
+pub struct Meter(pub f32);
 
 impl TileMap {
+    pub fn new() -> Self {
+        let chunk_shift = 4;
+        let mut result = Self {
+            chunk_shift,
+            chunk_mask: (1 << chunk_shift) - 1,
+            // chunk_dim: (1 << chunk_shift),
+            count_x: 128,
+            count_y: 128,
+            count_z: 2,
+
+            tile_size: Meter(1.4),
+            chunks: vec![],
+        };
+
+        let size = result.count_x * result.count_y * result.count_z;
+        // let size = 2;
+        result.chunks = vec![TileChunk::new(1 << chunk_shift); size];
+
+        result.dummy_world();
+        // panic!();
+        result
+        // dbg!(result)
+    }
+
+    fn dummy_world(&mut self) {
+        let tiles_per_width = 17;
+        let tiles_per_height = 9;
+
+        for screen_y in 0..10 {
+            for screen_x in 0..10 {
+                for tile_y in 0..tiles_per_height {
+                    for tile_x in 0..tiles_per_width {
+                        let abs_x = screen_x * tiles_per_width + tile_x;
+                        let abs_y = screen_y * tiles_per_height + tile_y;
+
+                        let kind = {
+                            if tile_x == 0 || tile_x == tiles_per_width - 1 {
+                                if tile_y == 4 {
+                                    TileKind::Ground
+                                } else {
+                                    TileKind::Wall
+                                }
+                            } else if tile_y == 0 || tile_y == tiles_per_height - 1 {
+                                if tile_x == 8 {
+                                    TileKind::Ground
+                                } else {
+                                    TileKind::Wall
+                                }
+                            } else {
+                                TileKind::Ground
+                            }
+                        };
+                        let position = CompressedPosition {
+                            x: abs_x,
+                            y: abs_y,
+                            z: 0,
+                        };
+                        let tile = Tile { kind };
+                        self.set_tile(position, tile);
+                    }
+                }
+            }
+        }
+    }
+
     fn offset(&self, position: Position) -> usize {
         position.z * self.count_y * self.count_x + position.y * self.count_x + position.x
     }
@@ -126,7 +214,7 @@ impl TileMap {
         }
     }
 
-    fn tile_from_compressed_pos(&self, position: CompressedPosition) -> Option<&Tile> {
+    pub fn tile_from_compressed_pos(&self, position: CompressedPosition) -> Option<&Tile> {
         let chunk_pos = self.chunk_position(position);
         self.chunk(chunk_pos.position_in_map)
             .and_then(|c| c.tile(chunk_pos.tile_position))
@@ -136,27 +224,30 @@ impl TileMap {
         self.tile_from_compressed_pos(position.chunk_position)
     }
 
-    fn is_tile_empty(&self, position: TileMapPosition) -> bool {
+    pub fn is_tile_empty(&self, position: TileMapPosition) -> bool {
         self.tile_from_map_pos(position)
-            .map_or(true, |t| t.kind == TileKind::Empty)
+            .map_or(true, |t| t.kind != TileKind::Wall)
     }
 
     fn set_tile(&mut self, position: CompressedPosition, tile: Tile) -> bool {
         let chunk_pos = self.chunk_position(position);
-        self.chunk_mut(chunk_pos.position_in_map)
-            .map(|c| c.set_tile(chunk_pos.tile_position, tile))
-            .is_some()
+        let chunk = self.chunk_mut(chunk_pos.position_in_map).unwrap();
+        chunk.set_tile(chunk_pos.tile_position, tile);
+        true
     }
 
     fn recanonicalize_coord(&self, pos: &mut usize, rel: &mut f32) {
-        //TODO only this fn is missing
-        todo!()
+        // println!("before: pos {}, rel {}", pos, rel);
+        let offset = (*rel / self.tile_size.0).round();
+        *pos += offset as usize;
+        *rel -= offset * self.tile_size.0;
+        // println!("after: pos {}, rel {}", pos, rel);
+        assert!(*rel >= -0.5 * self.tile_size.0);
+        assert!(*rel <= 0.5 * self.tile_size.0);
     }
 
-    fn recanonicalize_position(&self, position: TileMapPosition) -> TileMapPosition {
-        let mut new = position;
-        self.recanonicalize_coord(&mut new.chunk_position.x, &mut new.rel_position.x);
-        self.recanonicalize_coord(&mut new.chunk_position.y, &mut new.rel_position.y);
-        new
+    pub fn recanonicalize_position(&self, position: &mut TileMapPosition) {
+        self.recanonicalize_coord(&mut position.chunk_position.x, &mut position.offset.x);
+        self.recanonicalize_coord(&mut position.chunk_position.y, &mut position.offset.y);
     }
 }
