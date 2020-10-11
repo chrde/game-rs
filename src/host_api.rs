@@ -8,7 +8,10 @@ pub trait HostApi {
     }
 
     fn update_canvas(&mut self, buffer: &[u8], pitch: usize);
+
     fn generate_audio(&mut self);
+
+    fn load_bmp(&self, path: &str) -> Bitmap;
 }
 
 #[derive(Clone, Default)]
@@ -23,4 +26,10 @@ pub struct Input {
     pub old: InputState,
     pub new: InputState,
     pub time_per_frame: f32,
+}
+
+pub struct Bitmap {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u8>,
 }

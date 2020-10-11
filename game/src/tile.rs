@@ -5,6 +5,13 @@ pub struct Offset {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct PositionDiff {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+#[derive(Copy, Clone, Debug)]
 struct TilePosition {
     x: usize,
     y: usize,
@@ -36,16 +43,27 @@ pub struct TileMapPosition {
 }
 
 impl TileMapPosition {
-    pub fn initial_player() -> Self {
+    pub fn initial_camera() -> Self {
         Self {
-            chunk_position: CompressedPosition { x: 0, y: 0, z: 0 },
-            offset: Offset { x: -2.0, y: 0.0 },
+            chunk_position: CompressedPosition {
+                x: 17 / 2,
+                y: 9 / 2,
+                z: 0,
+            },
+            offset: Offset { x: 0.0, y: 0.0 },
         }
     }
 
-    fn same_tile(&self, other: &Self) -> bool {
-        self.chunk_position == other.chunk_position
+    pub fn initial_player() -> Self {
+        Self {
+            chunk_position: CompressedPosition { x: 1, y: 3, z: 0 },
+            offset: Offset { x: 5.0, y: 5.0 },
+        }
     }
+
+    // fn same_tile(&self, other: &Self) -> bool {
+    //     self.chunk_position == other.chunk_position
+    // }
 }
 
 /// Position of tile in a chunk
@@ -249,5 +267,17 @@ impl TileMap {
     pub fn recanonicalize_position(&self, position: &mut TileMapPosition) {
         self.recanonicalize_coord(&mut position.chunk_position.x, &mut position.offset.x);
         self.recanonicalize_coord(&mut position.chunk_position.y, &mut position.offset.y);
+    }
+
+    pub fn substract(&self, a: TileMapPosition, b: TileMapPosition) -> PositionDiff {
+        let x = a.chunk_position.x as f32 - b.chunk_position.x as f32;
+        let y = a.chunk_position.y as f32 - b.chunk_position.y as f32;
+        let z = a.chunk_position.z as f32 - b.chunk_position.z as f32;
+
+        PositionDiff {
+            x: self.tile_size.0 * x + (a.offset.x - b.offset.x),
+            y: self.tile_size.0 * y + (a.offset.y - b.offset.y),
+            z: self.tile_size.0 * z,
+        }
     }
 }

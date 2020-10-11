@@ -13,6 +13,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 mod audio;
+mod bmp;
 mod input;
 
 // use super::*;
@@ -43,6 +44,10 @@ impl<'a> HostApi for SdlHostApi<'a> {
     fn generate_audio(&mut self) {
         self.audio.gen_audio();
     }
+
+    fn load_bmp(&self, path: &str) -> Bitmap {
+        bmp::load_from_file(path)
+    }
 }
 
 pub fn main(reloader: Receiver<()>) -> Result<(), String> {
@@ -51,7 +56,7 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
     let audio = Audio::new(sdl_context.audio()?)?;
 
     let window = video_subsystem
-        .window("rust-sdl2 demo", 1920, 1080)
+        .window("rust-sdl2 demo", 1920 / 2, 1080 / 2)
         .position_centered()
         .resizable()
         .build()
@@ -69,7 +74,7 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
     let state = (api.init)(&host_api);
 
     host_api.audio.toggle();
-    let mut input = Input{
+    let mut input = Input {
         new: Default::default(),
         old: Default::default(),
         time_per_frame: 1.0 / 60.0,
