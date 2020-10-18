@@ -1,13 +1,8 @@
-#[derive(Copy, Clone, Debug)]
-pub struct Offset {
-    pub x: f32,
-    pub y: f32,
-}
+use super::*;
 
 #[derive(Copy, Clone, Debug)]
 pub struct PositionDiff {
-    pub x: f32,
-    pub y: f32,
+    pub xy: V2,
     pub z: f32,
 }
 
@@ -39,7 +34,7 @@ pub struct TileMapPosition {
     pub chunk_position: CompressedPosition,
 
     /// offset from tile center
-    pub offset: Offset,
+    pub offset: V2,
 }
 
 impl TileMapPosition {
@@ -50,14 +45,14 @@ impl TileMapPosition {
                 y: 9 / 2,
                 z: 0,
             },
-            offset: Offset { x: 0.0, y: 0.0 },
+            offset: V2::default(),
         }
     }
 
     pub fn initial_player() -> Self {
         Self {
             chunk_position: CompressedPosition { x: 1, y: 3, z: 0 },
-            offset: Offset { x: 5.0, y: 5.0 },
+            offset: V2::default(),
         }
     }
 
@@ -203,16 +198,16 @@ impl TileMap {
         }
     }
 
-    fn offset(&self, position: Position) -> usize {
+    fn offset_idx(&self, position: Position) -> usize {
         position.z * self.count_y * self.count_x + position.y * self.count_x + position.x
     }
 
     fn chunk(&self, position: Position) -> Option<&TileChunk> {
-        self.chunks.get(self.offset(position))
+        self.chunks.get(self.offset_idx(position))
     }
 
     fn chunk_mut(&mut self, position: Position) -> Option<&mut TileChunk> {
-        let offset = self.offset(position);
+        let offset = self.offset_idx(position);
         self.chunks.get_mut(offset)
     }
 
@@ -254,30 +249,47 @@ impl TileMap {
         true
     }
 
-    fn recanonicalize_coord(&self, pos: &mut usize, rel: &mut f32) {
-        // println!("before: pos {}, rel {}", pos, rel);
-        let offset = (*rel / self.tile_size.0).round();
-        *pos += offset as usize;
-        *rel -= offset * self.tile_size.0;
-        // println!("after: pos {}, rel {}", pos, rel);
-        assert!(*rel >= -0.5 * self.tile_size.0);
-        assert!(*rel <= 0.5 * self.tile_size.0);
+    fn recanonicalize_coord(&self, pos: usize, rel: f32) -> (usize, f32) {
+        let offset = (rel / self.tile_size.0).round();
+        let new_pos = pos as f32 + offset;
+        let new_rel = rel - offset * self.tile_size.0;
+        assert!(new_rel > -0.5001 * self.tile_size.0);
+        assert!(new_rel < 0.5001 * self.tile_size.0);
+        (new_pos as usize, new_rel)
     }
 
-    pub fn recanonicalize_position(&self, position: &mut TileMapPosition) {
-        self.recanonicalize_coord(&mut position.chunk_position.x, &mut position.offset.x);
-        self.recanonicalize_coord(&mut position.chunk_position.y, &mut position.offset.y);
+    fn recanonicalize_position(&self, position: TileMapPosition) -> TileMapPosition {
+        let (abs_x, x) = self.recanonicalize_coord(position.chunk_position.x, position.offset.x());
+        let (abs_y, y) = self.recanonicalize_coord(position.chunk_position.y, position.offset.y());
+        let mut result = position;
+        result.chunk_position.x = abs_x;
+        result.chunk_position.y = abs_y;
+        result.offset = V2::new(x, y);
+        result
     }
 
     pub fn substract(&self, a: TileMapPosition, b: TileMapPosition) -> PositionDiff {
         let x = a.chunk_position.x as f32 - b.chunk_position.x as f32;
         let y = a.chunk_position.y as f32 - b.chunk_position.y as f32;
+        let xy = V2::new(x, y);
         let z = a.chunk_position.z as f32 - b.chunk_position.z as f32;
 
         PositionDiff {
-            x: self.tile_size.0 * x + (a.offset.x - b.offset.x),
-            y: self.tile_size.0 * y + (a.offset.y - b.offset.y),
+            xy: self.tile_size.0 * xy + (a.offset - b.offset),
             z: self.tile_size.0 * z,
         }
+    }
+
+    pub fn centered_tile_point(x: usize, y: usize, z: usize) -> TileMapPosition {
+        TileMapPosition {
+            chunk_position: CompressedPosition { x, y, z },
+            offset: V2::default(),
+        }
+    }
+
+    pub fn offset(&self, position: TileMapPosition, offset: V2) -> TileMapPosition {
+        let mut position = position;
+        position.offset += offset;
+        self.recanonicalize_position(position)
     }
 }

@@ -1,3 +1,4 @@
+use crate::V2;
 use crate::host_api::*;
 
 #[repr(C)]
@@ -35,9 +36,9 @@ impl OffscreenBuffer {
         }
     }
 
-    pub fn render_rectangle(&mut self, minx: f32, miny: f32, maxx: f32, maxy: f32, color: Color) {
+    pub fn render_rectangle(&mut self, min: V2, max: V2, color: Color) {
         let miny = {
-            let miny = miny.round() as i32;
+            let miny = min.y().round() as i32;
             if miny < 0 {
                 0
             } else {
@@ -46,7 +47,7 @@ impl OffscreenBuffer {
         };
 
         let minx = {
-            let minx = minx.round() as i32;
+            let minx = min.x().round() as i32;
             if minx < 0 {
                 0
             } else {
@@ -55,7 +56,7 @@ impl OffscreenBuffer {
         };
 
         let maxx = {
-            let maxx = std::cmp::max(maxx.round() as i32, 0);
+            let maxx = std::cmp::max(max.x().round() as i32, 0);
             if maxx > self.width as i32 {
                 self.width as usize
             } else {
@@ -64,7 +65,7 @@ impl OffscreenBuffer {
         };
 
         let maxy = {
-            let maxy = std::cmp::max(maxy.round() as i32, 0);
+            let maxy = std::cmp::max(max.y().round() as i32, 0);
             if maxy > self.height as i32 {
                 self.height as usize
             } else {
@@ -86,13 +87,12 @@ impl OffscreenBuffer {
     pub fn render_bitmap(
         &mut self,
         bitmap: &Bitmap,
-        real_x: f32,
-        real_y: f32,
+        xy: V2,
         align_x: i32,
         align_y: i32,
     ) {
-        let real_x = real_x - (align_x as f32);
-        let real_y = real_y - (align_y as f32);
+        let real_x = xy.x() - (align_x as f32);
+        let real_y = xy.y() - (align_y as f32);
 
         let (min_x, source_offset_x) = {
             let min_x = real_x.round() as i32;
