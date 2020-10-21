@@ -1,5 +1,5 @@
-use crate::V2;
 use crate::host_api::*;
+use crate::V2;
 
 #[repr(C)]
 pub struct OffscreenBuffer {
@@ -16,6 +16,7 @@ impl OffscreenBuffer {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct Color {
     pub red: f32,
     pub green: f32,
@@ -90,6 +91,7 @@ impl OffscreenBuffer {
         xy: V2,
         align_x: i32,
         align_y: i32,
+        c_alpha: f32,
     ) {
         let real_x = xy.x() - (align_x as f32);
         let real_y = xy.y() - (align_y as f32);
@@ -113,7 +115,8 @@ impl OffscreenBuffer {
         };
 
         let max_x = {
-            let max_x = (real_x + bitmap.width as f32).round() as i32;
+            // let max_x = (real_x + bitmap.width as f32).round() as i32;
+            let max_x = real_x.round() as i32 + bitmap.width as i32;
             if max_x > self.width as i32 {
                 self.width as usize
             } else {
@@ -122,7 +125,8 @@ impl OffscreenBuffer {
         };
 
         let max_y = {
-            let max_y = (real_y + bitmap.height as f32).round() as i32;
+            // let max_y = (real_y + bitmap.height as f32).round() as i32;
+            let max_y = real_y.round() as i32 + bitmap.height as i32;
             if max_y > self.height as i32 {
                 self.height as usize
             } else {
@@ -130,9 +134,8 @@ impl OffscreenBuffer {
             }
         };
 
-        let mut source_offset_pixel = bitmap.width * (bitmap.height - 1)
-            - (source_offset_y * bitmap.width)
-            + source_offset_x;
+        let mut source_offset_pixel =
+            bitmap.width * (bitmap.height - 1) - (source_offset_y * bitmap.width) + source_offset_x;
 
         let mut dest_offset_pixel = min_y * self.width + min_x;
         for _ in min_y..max_y {
@@ -142,7 +145,7 @@ impl OffscreenBuffer {
                 let sb = bitmap.pixels[source_offset + 0] as f32;
                 let sg = bitmap.pixels[source_offset + 1] as f32;
                 let sr = bitmap.pixels[source_offset + 2] as f32;
-                let a = bitmap.pixels[source_offset + 3] as f32 / 255.0;
+                let a = c_alpha * (bitmap.pixels[source_offset + 3] as f32 / 255.0);
 
                 let db = self.buffer[dest_offset + 0] as f32;
                 let dg = self.buffer[dest_offset + 1] as f32;
