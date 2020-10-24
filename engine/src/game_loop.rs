@@ -96,6 +96,13 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
                     ..
                 } => break 'running,
                 Event::KeyDown {
+                    keycode: Some(Keycode::Return),
+                    ..
+                } => {
+                    println!("===== Restarting =====");
+                    (api.restart)(state);
+                }
+                Event::KeyDown {
                     keycode: Some(Keycode::Space),
                     ..
                 } => {

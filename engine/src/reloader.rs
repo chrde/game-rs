@@ -54,7 +54,8 @@ impl GameLib {
         unsafe {
             let init = self.lib.get(b"game_init")?;
             let update = self.lib.get(b"game_update")?;
-            Ok(GameApi { init, update })
+            let restart = self.lib.get(b"game_restart")?;
+            Ok(GameApi { init, update, restart })
         }
     }
 }
@@ -76,7 +77,7 @@ pub struct GameApi<'lib> {
     // // Called on game unload
     // pub unload: lib::Symbol<'lib, fn(*mut GameState)>,
 
-    // // Called on game reload
-    // pub reload: lib::Symbol<'lib, fn(*mut GameState)>,
+    // Called on game reload
+    pub restart: lib::Symbol<'lib, fn(*mut GameState)>,
 }
 
