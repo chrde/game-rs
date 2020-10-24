@@ -1,18 +1,21 @@
+mod entity;
 #[path = "../../src/host_api.rs"]
 mod host_api;
 mod math;
 mod render;
-mod tile;
+mod world;
 
 pub use math::*;
 pub use render::OffscreenBuffer;
 
+use entity::*;
 use host_api::*;
 use render::Color;
-use tile::*;
+use world::*;
 
 #[no_mangle]
 pub extern "C" fn game_init(host_api: &dyn HostApi) -> *mut GameState {
+    println!("hello");
     let width = 1920 / 2;
     let height = 1080 / 2;
     let bytes_per_pixel = 4;
@@ -22,23 +25,38 @@ pub extern "C" fn game_init(host_api: &dyn HostApi) -> *mut GameState {
         height,
         bytes_per_pixel,
     };
-    let tile_map = TileMap::new();
-    let camera = tile_map.initial_camera();
+    let world = World::new();
+    let camera = world.initial_camera();
     let mut game = GameState {
         offscreen_buffer,
-        tile_map,
+        world,
         camera,
         entity_focused_by_camera: None,
-        low_entities: Vec::new(),
-        high_entities: Vec::new(),
-        backdrop: host_api.load_bmp("assets/bmp/test_background.bmp"),
-        shadow: host_api.load_bmp("assets/bmp/test_hero_shadow.bmp"),
+        entities: EntityStorage::new(),
+        backdrop: host_api.load_bmp("assets/test/test_background.bmp"),
+        shadow: host_api.load_bmp("assets/test/test_hero_shadow.bmp"),
+        tree: host_api.load_bmp("assets/test2/tree00.bmp"),
         hero_bitmaps: load_hero(host_api),
     };
-    game.add_player(camera);
+    game.tree.align_x = 40;
+    game.tree.align_y = 80;
+    let idx = game.add_player(camera);
+    game.entity_focused_by_camera = Some(idx);
     game.add_walls();
     update_camera(&mut game, camera);
     Box::into_raw(Box::new(game))
+}
+
+#[no_mangle]
+pub extern "C" fn game_restart(state: &mut GameState) {
+    state.world = World::new();
+    state.camera = state.world.initial_camera();
+    state.entities = EntityStorage::new();
+    state.entity_focused_by_camera = None;
+    let idx = state.add_player(state.camera);
+    state.entity_focused_by_camera = Some(idx);
+    state.add_walls();
+    update_camera(state, state.camera);
 }
 
 #[no_mangle]
@@ -48,7 +66,7 @@ pub extern "C" fn game_update(
     host_api: &mut dyn HostApi,
 ) -> bool {
     let tile_side_in_pixels: f32 = 60.0;
-    let meters_to_pixels = tile_side_in_pixels as f32 / state.tile_size_in_meters();
+    let meters_to_pixels = tile_side_in_pixels as f32 / state.tile_side();
     let screen_center_x = 0.5 * (state.offscreen_buffer.width as f32);
     let screen_center_y = 0.5 * (state.offscreen_buffer.height as f32);
     state.offscreen_buffer.reset();
@@ -76,38 +94,53 @@ pub extern "C" fn game_update(
         };
 
         let player = state.player();
-        let new_player = move_player(&state, player, input.time_per_frame, ddp);
-        state.update_player(new_player);
+        let player = move_player(state, player, input.time_per_frame, ddp);
+        state.update_player(player);
     }
 
     // move camera
     {
         if let Some(low_idx) = state.entity_focused_by_camera {
-            let entity = state.high_entity(low_idx);
-            let mut new_camera = state.camera;
+            let entity = state.entity(low_idx);
+            let new_camera = entity.low.p;
+            // let mut new_camera = state.camera;
 
             //TODO update camera z based on entity focused
 
-            if entity.high.p.x() > 9.0 * state.tile_size_in_meters() {
-                new_camera.abs.x += 17;
-            }
-            if entity.high.p.x() < -(9.0 * state.tile_size_in_meters()) {
-                new_camera.abs.x -= 17;
-            }
-            if entity.high.p.y() > 5.0 * state.tile_size_in_meters() {
-                new_camera.abs.y += 9;
-            }
-            if entity.high.p.y() < -(5.0 * state.tile_size_in_meters()) {
-                new_camera.abs.y -= 9;
-            }
+            // if entity.high.p.x() > 9.0 * state.tile_side() {
+            //     println!("moving right");
+            //     new_camera.abs.x += 17;
+            // }
+            // if entity.high.p.x() < -(9.0 * state.tile_side()) {
+            //     println!("moving left");
+            //     new_camera.abs.x -= 17;
+            // }
+            // if entity.high.p.y() > 5.0 * state.tile_side() {
+            //     println!("moving up");
+            //     new_camera.abs.y += 9;
+            // }
+            // if entity.high.p.y() < -(5.0 * state.tile_side()) {
+            //     println!("moving down");
+            //     new_camera.abs.y -= 9;
+            // }
 
             update_camera(state, new_camera);
         }
     }
 
-    state
-        .offscreen_buffer
-        .render_bitmap(&state.backdrop, V2::default(), 0, 0, 1.0);
+    let grey = Color {
+        red: 0.5,
+        green: 0.5,
+        blue: 0.5,
+    };
+    state.offscreen_buffer.render_rectangle(
+        V2::default(),
+        V2::new(
+            state.offscreen_buffer.width as f32,
+            state.offscreen_buffer.height as f32,
+        ),
+        grey,
+    );
 
     // render entities
     {
@@ -117,42 +150,51 @@ pub extern "C" fn game_update(
             blue: 0.0,
         };
 
-        for high in state.high_entities.iter().rev() {
-            let low = &state.low_entities[high.low_entity_idx];
+        for high in state.entities.high_slice().iter() {
+            let low = &state.entities.low(high.low_entity_idx);
             let player_ground_x = screen_center_x + meters_to_pixels * high.p.x();
             let player_ground_y = screen_center_y - meters_to_pixels * high.p.y();
             let player_ground = V2::new(player_ground_x, player_ground_y);
             let width_height = V2::new(low.width, low.height);
             //bitmap renders with inversed Y (hence top, not bottom)
-            let player_left_top = player_ground - 0.5 * meters_to_pixels * width_height;
+            let player_left_top1 = player_ground - 0.5 * meters_to_pixels * width_height;
 
             if low.kind == EntityKind::Player {
                 let bitmaps = &state.hero_bitmaps[high.facing_direction];
+
                 state.offscreen_buffer.render_bitmap(
                     &bitmaps.torso,
                     player_ground,
-                    bitmaps.align_x as i32,
-                    bitmaps.align_y as i32,
+                    bitmaps.torso.align_x as i32,
+                    bitmaps.torso.align_y as i32,
                     1.0,
                 );
                 state.offscreen_buffer.render_bitmap(
                     &bitmaps.cape,
                     player_ground,
-                    bitmaps.align_x as i32,
-                    bitmaps.align_y as i32,
+                    bitmaps.cape.align_x as i32,
+                    bitmaps.cape.align_y as i32,
                     1.0,
                 );
                 state.offscreen_buffer.render_bitmap(
                     &bitmaps.head,
                     player_ground,
-                    bitmaps.align_x as i32,
-                    bitmaps.align_y as i32,
+                    bitmaps.head.align_x as i32,
+                    bitmaps.head.align_y as i32,
                     1.0,
                 );
             } else {
+                state.offscreen_buffer.render_bitmap(
+                    &state.tree,
+                    player_ground,
+                    state.tree.align_x as i32,
+                    state.tree.align_y as i32,
+                    1.0,
+                );
+
                 state.offscreen_buffer.render_rectangle(
-                    player_left_top,
-                    player_left_top + meters_to_pixels * width_height,
+                    player_left_top1,
+                    player_left_top1 + meters_to_pixels * width_height * 0.9,
                     player_color,
                 );
             }
@@ -193,32 +235,31 @@ fn test_wall(t_min: &mut f32, wall_x: f32, rel: V2, player_delta: V2, y_range: V
 fn load_hero(host_api: &dyn HostApi) -> Vec<HeroBitmaps> {
     let mut result = Vec::with_capacity(4);
     for dir in ["left", "right", "front", "back"].iter() {
-        let hero_bitmaps = HeroBitmaps {
-            align_x: 72,
-            align_y: 182,
-            head: host_api.load_bmp(&format!("assets/bmp/test_hero_{}_head.bmp", dir)),
-            cape: host_api.load_bmp(&format!("assets/bmp/test_hero_{}_cape.bmp", dir)),
-            torso: host_api.load_bmp(&format!("assets/bmp/test_hero_{}_torso.bmp", dir)),
+        let mut hero_bitmaps = HeroBitmaps {
+            head: host_api.load_bmp(&format!("assets/test/test_hero_{}_head.bmp", dir)),
+            cape: host_api.load_bmp(&format!("assets/test/test_hero_{}_cape.bmp", dir)),
+            torso: host_api.load_bmp(&format!("assets/test/test_hero_{}_torso.bmp", dir)),
         };
+        hero_bitmaps.head.align_x = 72;
+        hero_bitmaps.head.align_y = 182;
+        hero_bitmaps.cape.align_x = 72;
+        hero_bitmaps.cape.align_y = 182;
+        hero_bitmaps.torso.align_x = 72;
+        hero_bitmaps.torso.align_y = 182;
         result.push(hero_bitmaps);
     }
 
     result
 }
 
-fn move_player(
-    state: &GameState,
-    mut player: Entity,
-    dt: f32,
-    ddp_orig: V2,
-) -> Entity {
+fn move_player(state: &mut GameState, mut player: Entity, dt: f32, ddp_orig: V2) -> Entity {
     let mut ddp = ddp_orig;
 
     //normalize (e.g: diagonal)
     if ddp.len() > 1.0 {
         ddp *= 1.0 / ddp.len().sqrt();
     }
-    let player_speed = 50.0; // m/s^2
+    let player_speed = 5.0 * 50.0; // m/s^2
     ddp *= player_speed;
 
     let friction = -8.0;
@@ -234,11 +275,11 @@ fn move_player(
             let desired_position: V2 = player.high.p + player_delta;
             let mut wall_normal = V2::default();
             let mut collided_idx = None;
-            for (high_idx, test_entity) in state.high_entities.iter().enumerate() {
+            for (high_idx, test_entity) in state.entities.high_slice().iter().enumerate() {
                 if test_entity.low_entity_idx == player.high.low_entity_idx {
                     continue;
                 }
-                let test_low_entity = state.low_entity(test_entity.low_entity_idx);
+                let test_low_entity = state.entities.low(test_entity.low_entity_idx);
                 if !test_low_entity.collides {
                     continue;
                 }
@@ -319,42 +360,56 @@ fn move_player(
         }
     }
 
-    player.low.p = state
-        .tile_map
-        .map_into_tile_space(state.camera, player.high.p);
+    let new_p = state
+        .world
+        .map_into_chunk_space(state.camera, player.high.p);
+
+    state
+        .world
+        .change_entity_chunks(player.low_idx, Some(player.low.p), new_p);
+    player.low.p = new_p;
+
     player
 }
 
-fn update_camera(state: &mut GameState, new_position: TileMapPosition) {
-    let diff = state.tile_map.substract(new_position, state.camera);
+fn update_camera(state: &mut GameState, new_camera: WorldPosition) {
+    assert!(state.entities.validate_entities());
 
-    state.camera = new_position;
+    let offset = state.camera_offset(new_camera);
+    state.camera = new_camera;
 
     let tile_span_x = 17 * 3;
     let tile_span_y = 9 * 3;
-
-    let camera_size = state.tile_size_in_meters() * V2::new(tile_span_x as f32, tile_span_y as f32);
+    let camera_size = state.tile_side() * V2::new(tile_span_x as f32, tile_span_y as f32);
 
     let camera_bounds = Rect2::new_center_dim(V2::default(), camera_size);
 
-    state.offset_and_check_frequency_area(-diff.xy, camera_bounds);
+    state.update_entities(-offset, camera_bounds);
+    assert!(state.entities.validate_entities());
 
-    // state.camera.abs.z = state.player().p.abs.z;
-    let min_tile_x = new_position.abs.x.saturating_sub(tile_span_x / 2);
-    let max_tile_x = new_position.abs.x + tile_span_x / 2;
-    let min_tile_y = new_position.abs.y.saturating_sub(tile_span_y / 2);
-    let max_tile_y = new_position.abs.y + tile_span_y / 2;
+    let min_chunk = state
+        .world
+        .map_into_chunk_space(new_camera, camera_bounds.min());
+    let max_chunk = state
+        .world
+        .map_into_chunk_space(new_camera, camera_bounds.max());
 
-
-    for low_idx in 0..state.low_entities.len() {
-        let low_pos = state.low_entity(low_idx).p;
-        //TODO z
-        if low_pos.abs.x >= min_tile_x
-            && low_pos.abs.x <= max_tile_x
-            && low_pos.abs.y >= min_tile_y
-            && low_pos.abs.y <= max_tile_y
-        {
-            state.make_high_entity(low_idx);
+    for chunk_y in min_chunk.abs.y..=max_chunk.abs.y {
+        for chunk_x in min_chunk.abs.x..=max_chunk.abs.x {
+            let chunk_idx = ChunkIdx::new(chunk_x, chunk_y, new_camera.abs.z);
+            if let Some(chunk) = state.world.chunk(chunk_idx) {
+                //TODO here
+                let entities: Vec<_> = chunk.entities().to_vec();
+                for low_entity_idx in entities {
+                    let low_entity = state.entities.low(low_entity_idx);
+                    if low_entity.high_entity_idx.is_none() {
+                        let entity_pos = state.camera_offset(low_entity.p);
+                        if camera_bounds.contains(entity_pos) {
+                            state.make_high(low_entity_idx);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -362,118 +417,91 @@ fn update_camera(state: &mut GameState, new_position: TileMapPosition) {
 #[repr(C)]
 pub struct GameState {
     pub offscreen_buffer: OffscreenBuffer,
-    pub tile_map: TileMap,
-    pub camera: TileMapPosition,
+    pub world: World,
+    pub camera: WorldPosition,
     entity_focused_by_camera: Option<usize>,
 
-    low_entities: Vec<LowEntity>,
-    high_entities: Vec<HighEntity>,
+    entities: EntityStorage,
 
     backdrop: Bitmap,
     shadow: Bitmap,
+    tree: Bitmap,
     hero_bitmaps: Vec<HeroBitmaps>,
 }
 
 impl GameState {
-    fn tile_size_in_meters(&self) -> f32 {
-        self.tile_map.tile_size.0
+    fn tile_side(&self) -> f32 {
+        self.world.tile_side
     }
 
     fn update_player(&mut self, entity: Entity) {
-        let idx = entity.high.low_entity_idx;
-        self.high_entities[entity.low.high_entity_idx.unwrap()] = entity.high;
-        self.low_entities[idx] = entity.low;
+        self.entities.update(entity)
     }
 
     fn player(&mut self) -> Entity {
-        self.high_entity(self.entity_focused_by_camera.unwrap())
+        self.entity(self.entity_focused_by_camera.unwrap())
     }
 
-    fn low_entity_mut(&mut self, low_idx: usize) -> &mut LowEntity {
-        &mut self.low_entities[low_idx]
-    }
-
-    fn low_entity(&self, low_idx: usize) -> &LowEntity {
-        &self.low_entities[low_idx]
-    }
-
-    fn high_entity(&mut self, low_idx: usize) -> Entity {
-        let high_entity_idx = self.make_high_entity(low_idx);
-        let low = self.low_entities[low_idx].clone();
-        let high = self.high_entities[high_entity_idx].clone();
-        Entity { low_idx, low, high }
-    }
-
-    //demote
-    fn make_low_entity(&mut self, low_idx: usize) {
-        if let Some(high_idx) = self.low_entity_mut(low_idx).high_entity_idx.take() {
-            let last = self.high_entities.last().unwrap().low_entity_idx;
-            self.high_entities.swap_remove(high_idx);
-            if high_idx != self.high_entities.len() {
-                self.low_entity_mut(last).high_entity_idx = Some(high_idx);
-            }
-        }
+    fn entity(&mut self, low_idx: usize) -> Entity {
+        self.make_high(low_idx);
+        self.entities.entity(low_idx)
     }
 
     //promote
-    fn make_high_entity(&mut self, low_idx: usize) -> usize {
-        let camera = self.camera;
-        let low = &mut self.low_entities[low_idx];
-        if let Some(high_idx) = low.high_entity_idx {
+    fn make_high(&mut self, low_idx: usize) -> usize {
+        if let Some(high_idx) = self.entities.high_idx(low_idx) {
             high_idx
         } else {
-            let new_high_idx = self.high_entities.len();
-            let new_high = {
-                let p = self.tile_map.substract(low.p, camera);
-                HighEntity::new(p.xy, low.abs_tile_z, low_idx)
-            };
-            low.high_entity_idx = Some(new_high_idx);
-            self.high_entities.push(new_high);
-            new_high_idx
+            let low_p = self.entities.low(low_idx).p;
+            let p = self.camera_offset(low_p);
+            self.entities.new_high(low_idx, p)
         }
     }
 
-    fn offset_and_check_frequency_area(&mut self, offset: V2, camera_bounds: Rect2) {
+    fn camera_offset(&self, p: WorldPosition) -> V2 {
+        let diff = self.world.substract(p, self.camera);
+        diff.xy
+    }
+
+    fn update_entities(&mut self, offset: V2, camera_bounds: Rect2) {
         let mut idx = 0;
-        while idx < self.high_entities.len() {
-            let high = &mut self.high_entities[idx];
+        while idx < self.entities.high_slice().len() {
+            let high = &mut self.entities.high_mut(idx);
             high.p += offset;
             if camera_bounds.contains(high.p) {
                 idx += 1;
             } else {
                 let demoted = high.low_entity_idx;
                 drop(high);
-                self.make_low_entity(demoted)
+                self.entities.make_low(demoted)
             }
         }
     }
 
     fn add_walls(&mut self) {
-        let walls = self.tile_map.walls.clone();
+        let walls = self.world.walls.clone();
         for abs in walls {
-            let p = TileMapPosition {
-                abs,
-                offset: V2::default(),
-            };
+            let p = self.world.position_at_tile(abs.0, abs.1, abs.2);
             self.add_wall(p);
         }
     }
 
-    fn add_wall(&mut self, p: TileMapPosition) -> usize {
+    fn add_wall(&mut self, p: WorldPosition) -> usize {
         let entity = LowEntity {
             kind: EntityKind::Wall,
             p,
-            width: self.tile_size_in_meters(),
-            height: self.tile_size_in_meters(),
+            width: self.tile_side(),
+            height: self.tile_side(),
             abs_tile_z: 0,
             collides: true,
             high_entity_idx: None,
         };
-        self.low_entities.push(entity);
-        self.low_entities.len() - 1
+        let low_entity_idx = self.entities.push_low(entity);
+        self.world.change_entity_chunks(low_entity_idx, None, p);
+        low_entity_idx
     }
 
-    fn add_player(&mut self, p: TileMapPosition) -> usize {
+    fn add_player(&mut self, p: WorldPosition) -> usize {
         let player = LowEntity {
             kind: EntityKind::Player,
             p,
@@ -483,69 +511,13 @@ impl GameState {
             collides: true,
             high_entity_idx: None,
         };
-        self.low_entities.push(player);
-        let idx = self.low_entities.len() - 1;
-        if self.entity_focused_by_camera.is_none() {
-            self.entity_focused_by_camera = Some(idx);
-        }
+        let idx = self.entities.push_low(player);
+        self.world.change_entity_chunks(idx, None, p);
         idx
     }
 }
 
-//TODO remove the clones, extract entities from world
-#[derive(Clone, Debug)]
-pub struct Entity {
-    low_idx: usize,
-    low: LowEntity,
-    high: HighEntity,
-}
-
-#[derive(Clone, Debug)]
-pub struct LowEntity {
-    kind: EntityKind,
-    p: TileMapPosition,
-    width: f32,
-    height: f32,
-    abs_tile_z: i32,
-    collides: bool,
-    high_entity_idx: Option<usize>,
-}
-
-#[derive(Clone, Debug)]
-pub struct HighEntity {
-    //relative to camera
-    p: V2,
-    dp: V2,
-    abs_tile_z: i32,
-    facing_direction: usize,
-    z: f32,
-    dz: f32,
-    low_entity_idx: usize,
-}
-
-impl HighEntity {
-    fn new(p: V2, abs_tile_z: i32, low_entity_idx: usize) -> Self {
-        Self {
-            p,
-            dp: V2::default(),
-            abs_tile_z,
-            facing_direction: 0,
-            z: 0.0,
-            dz: 0.0,
-            low_entity_idx,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EntityKind {
-    Wall,
-    Player,
-}
-
 pub struct HeroBitmaps {
-    align_x: u32,
-    align_y: u32,
     head: Bitmap,
     cape: Bitmap,
     torso: Bitmap,

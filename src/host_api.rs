@@ -29,6 +29,8 @@ pub struct Input {
 }
 
 pub struct Bitmap {
+    pub align_x: u32,
+    pub align_y: u32,
     pub width: usize,
     pub height: usize,
     pub pixels: Vec<u8>,

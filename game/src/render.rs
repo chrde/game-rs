@@ -115,8 +115,7 @@ impl OffscreenBuffer {
         };
 
         let max_x = {
-            // let max_x = (real_x + bitmap.width as f32).round() as i32;
-            let max_x = real_x.round() as i32 + bitmap.width as i32;
+            let max_x = std::cmp::max(real_x.round() as i32 + bitmap.width as i32, 0);
             if max_x > self.width as i32 {
                 self.width as usize
             } else {
@@ -125,8 +124,7 @@ impl OffscreenBuffer {
         };
 
         let max_y = {
-            // let max_y = (real_y + bitmap.height as f32).round() as i32;
-            let max_y = real_y.round() as i32 + bitmap.height as i32;
+            let max_y = std::cmp::max(real_y.round() as i32 + bitmap.height as i32, 0);
             if max_y > self.height as i32 {
                 self.height as usize
             } else {
@@ -137,7 +135,7 @@ impl OffscreenBuffer {
         let mut source_offset_pixel =
             bitmap.width * (bitmap.height - 1) - (source_offset_y * bitmap.width) + source_offset_x;
 
-        let mut dest_offset_pixel = min_y * self.width + min_x;
+        let mut dest_offset_pixel = min_y as usize * self.width + min_x as usize;
         for _ in min_y..max_y {
             let mut source_offset = source_offset_pixel * self.bytes_per_pixel;
             let mut dest_offset = dest_offset_pixel * self.bytes_per_pixel;

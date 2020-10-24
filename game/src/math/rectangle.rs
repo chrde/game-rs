@@ -1,5 +1,6 @@
 use super::*;
 
+#[derive(Copy, Clone, Debug)]
 pub struct Rect2 {
     min: V2,
     max: V2,
@@ -30,5 +31,17 @@ impl Rect2 {
 
     pub fn contains(&self, test: V2) -> bool {
         test.x() >= self.min.x() && test.y() >= self.min.y() && test.x() < self.max.x() && test.y() < self.max.y()
+    }
+
+    pub fn center(&self) -> V2 {
+        0.5 * (self.min + self.max)
+    }
+
+    pub fn min(&self) -> V2 {
+        self.min
+    }
+
+    pub fn max(&self) -> V2 {
+        self.max
     }
 }

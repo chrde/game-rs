@@ -39,6 +39,8 @@ pub fn load_from_file(path: &str) -> Bitmap {
     assert_eq!(result.len(), header.size_of_bitmap as usize);
 
     Bitmap {
+        align_x: 0,
+        align_y: 0,
         width: header.width as usize,
         height: header.height as usize,
         pixels: result,
