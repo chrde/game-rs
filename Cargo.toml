@@ -10,3 +10,7 @@ members = ["engine", "game"]
 [dependencies]
 engine = { path = "./engine" }
 game = { path = "./game" }
+
+[profile.release]
+debug = true
+

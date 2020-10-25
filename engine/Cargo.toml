@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 libloading = "0.6.3"
 notify = "5.0.0-pre.3"
-game = { path = "../game" }
+# game = { path = "../game" }
 
 [dependencies.sdl2]
 features = ["bundled"]
