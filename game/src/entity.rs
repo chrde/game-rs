@@ -6,6 +6,7 @@ pub struct EntityIdx(usize);
 
 #[derive(Clone, Debug)]
 pub struct HighEntity {
+    pub t_bob: f32,
     //relative to camera
     pub p: V2,
     pub dp: V2,
@@ -19,6 +20,7 @@ pub struct HighEntity {
 impl HighEntity {
     fn new(p: V2, chunk_z: i32, low_entity_idx: usize) -> Self {
         Self {
+            t_bob: 0.0,
             p,
             dp: V2::default(),
             chunk_z,
@@ -45,6 +47,8 @@ pub struct LowEntity {
 pub enum EntityKind {
     Wall,
     Player,
+    Familiar,
+    Monster
 }
 
 //TODO remove the clones, extract entities from world

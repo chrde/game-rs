@@ -27,7 +27,7 @@ pub extern "C" fn game_init(host_api: &dyn HostApi) -> *mut GameState {
     };
     let world = World::new();
     let camera = world.initial_camera();
-    let mut game = GameState {
+    let mut state = GameState {
         offscreen_buffer,
         world,
         camera,
@@ -38,25 +38,17 @@ pub extern "C" fn game_init(host_api: &dyn HostApi) -> *mut GameState {
         tree: host_api.load_bmp("assets/test2/tree00.bmp"),
         hero_bitmaps: load_hero(host_api),
     };
-    game.tree.align_x = 40;
-    game.tree.align_y = 80;
-    let idx = game.add_player(camera);
-    game.entity_focused_by_camera = Some(idx);
-    game.add_walls();
-    update_camera(&mut game, camera);
-    Box::into_raw(Box::new(game))
+    state.shadow.align_x = 72;
+    state.shadow.align_y = 182;
+    state.tree.align_x = 40;
+    state.tree.align_y = 80;
+    state.start();
+    Box::into_raw(Box::new(state))
 }
 
 #[no_mangle]
 pub extern "C" fn game_restart(state: &mut GameState) {
-    state.world = World::new();
-    state.camera = state.world.initial_camera();
-    state.entities = EntityStorage::new();
-    state.entity_focused_by_camera = None;
-    let idx = state.add_player(state.camera);
-    state.entity_focused_by_camera = Some(idx);
-    state.add_walls();
-    update_camera(state, state.camera);
+    state.start();
 }
 
 #[no_mangle]
@@ -93,15 +85,31 @@ pub extern "C" fn game_update(
             V2::new(player_x_offset, player_y_offset)
         };
 
-        let player = state.player();
-        let player = move_player(state, player, input.time_per_frame, ddp);
-        state.update_player(player);
+        for high in state.entities.high_slice().to_vec().iter() {
+            let low = state.entities.low(high.low_entity_idx);
+
+            match low.kind {
+                EntityKind::Player => {
+                    let entity = state.entities.entity(high.low_entity_idx);
+                    let entity = move_entity(&state, entity, input.time_per_frame, ddp);
+                    state.update_entity(entity);
+                }
+                EntityKind::Familiar => {
+                    let entity = state.entities.entity(high.low_entity_idx);
+                    let entity = state.update_familiar(entity, input.time_per_frame);
+                    state.update_entity(entity);
+                }
+                _ => {
+                    //TODO
+                }
+            }
+        }
     }
 
     // move camera
     {
         if let Some(low_idx) = state.entity_focused_by_camera {
-            let entity = state.entity(low_idx);
+            let entity = state.entities.entity(low_idx);
             let new_camera = entity.low.p;
             // let mut new_camera = state.camera;
 
@@ -144,58 +152,55 @@ pub extern "C" fn game_update(
 
     // render entities
     {
-        let player_color = Color {
-            red: 1.0,
-            green: 1.0,
-            blue: 0.0,
-        };
+        for high in state.entities.high_slice().to_vec().iter() {
+            let mut entity_pieces = vec![];
+            let low = state.entities.low(high.low_entity_idx);
 
-        for high in state.entities.high_slice().iter() {
-            let low = &state.entities.low(high.low_entity_idx);
-            let player_ground_x = screen_center_x + meters_to_pixels * high.p.x();
-            let player_ground_y = screen_center_y - meters_to_pixels * high.p.y();
-            let player_ground = V2::new(player_ground_x, player_ground_y);
-            let width_height = V2::new(low.width, low.height);
+            let hero_bitmaps = &state.hero_bitmaps[high.facing_direction];
+            match low.kind {
+                EntityKind::Player => {
+                    // entity_pieces.push(EntityVisiblePiece::new(&state.shadow, 1.0));
+                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.torso, 1.0));
+                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.cape, 1.0));
+                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.head, 1.0));
+                }
+                EntityKind::Wall => {
+                    entity_pieces.push(EntityVisiblePiece::new(&state.tree, 1.0));
+                }
+                EntityKind::Familiar => {
+                    entity_pieces.push(EntityVisiblePiece::new_offset(&state.shadow, 1.0, high.t_bob));
+                }
+                EntityKind::Monster => {
+                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.torso, 1.0));
+                }
+            }
+
+            let debug = false;
+
+            let entity_ground_x = screen_center_x + meters_to_pixels * high.p.x();
+            let bob_offset = 0.3 * (high.t_bob * 3.0).sin();
+            let entity_ground_y = screen_center_y - meters_to_pixels * (high.p.y() + bob_offset);
+            let entity_ground = V2::new(entity_ground_x, entity_ground_y);
             //bitmap renders with inversed Y (hence top, not bottom)
-            let player_left_top1 = player_ground - 0.5 * meters_to_pixels * width_height;
-
-            if low.kind == EntityKind::Player {
-                let bitmaps = &state.hero_bitmaps[high.facing_direction];
-
+            for piece in entity_pieces {
+                if debug {
+                    let color = Color {
+                        red: 1.0,
+                        green: 1.0,
+                        blue: 0.0,
+                    };
+                    let width_height = V2::new(low.width, low.height);
+                    let entity_left_top = entity_ground - 0.5 * meters_to_pixels * width_height;
+                    state.offscreen_buffer.render_rectangle(
+                        entity_left_top,
+                        entity_left_top + meters_to_pixels * width_height * 0.9,
+                        color,
+                    );
+                }
                 state.offscreen_buffer.render_bitmap(
-                    &bitmaps.torso,
-                    player_ground,
-                    bitmaps.torso.align_x as i32,
-                    bitmaps.torso.align_y as i32,
-                    1.0,
-                );
-                state.offscreen_buffer.render_bitmap(
-                    &bitmaps.cape,
-                    player_ground,
-                    bitmaps.cape.align_x as i32,
-                    bitmaps.cape.align_y as i32,
-                    1.0,
-                );
-                state.offscreen_buffer.render_bitmap(
-                    &bitmaps.head,
-                    player_ground,
-                    bitmaps.head.align_x as i32,
-                    bitmaps.head.align_y as i32,
-                    1.0,
-                );
-            } else {
-                state.offscreen_buffer.render_bitmap(
-                    &state.tree,
-                    player_ground,
-                    state.tree.align_x as i32,
-                    state.tree.align_y as i32,
-                    1.0,
-                );
-
-                state.offscreen_buffer.render_rectangle(
-                    player_left_top1,
-                    player_left_top1 + meters_to_pixels * width_height * 0.9,
-                    player_color,
+                    piece.bitmap,
+                    entity_ground - piece.offset,
+                    piece.alpha,
                 );
             }
         }
@@ -252,7 +257,7 @@ fn load_hero(host_api: &dyn HostApi) -> Vec<HeroBitmaps> {
     result
 }
 
-fn move_player(state: &mut GameState, mut player: Entity, dt: f32, ddp_orig: V2) -> Entity {
+fn move_entity(state: &GameState, mut entity: Entity, dt: f32, ddp_orig: V2) -> Entity {
     let mut ddp = ddp_orig;
 
     //normalize (e.g: diagonal)
@@ -263,20 +268,20 @@ fn move_player(state: &mut GameState, mut player: Entity, dt: f32, ddp_orig: V2)
     ddp *= player_speed;
 
     let friction = -8.0;
-    ddp += friction * player.high.dp;
+    ddp += friction * entity.high.dp;
 
-    let mut player_delta: V2 = 0.5 * ddp * dt.powi(2) + player.high.dp * dt;
-    player.high.dp = ddp * dt + player.high.dp;
+    let mut player_delta: V2 = 0.5 * ddp * dt.powi(2) + entity.high.dp * dt;
+    entity.high.dp = ddp * dt + entity.high.dp;
 
     // collision detection
     {
         for _ in 0..4 {
             let mut t_min = 1.0;
-            let desired_position: V2 = player.high.p + player_delta;
+            let desired_position: V2 = entity.high.p + player_delta;
             let mut wall_normal = V2::default();
             let mut collided_idx = None;
             for (high_idx, test_entity) in state.entities.high_slice().iter().enumerate() {
-                if test_entity.low_entity_idx == player.high.low_entity_idx {
+                if test_entity.low_entity_idx == entity.high.low_entity_idx {
                     continue;
                 }
                 let test_low_entity = state.entities.low(test_entity.low_entity_idx);
@@ -285,12 +290,12 @@ fn move_player(state: &mut GameState, mut player: Entity, dt: f32, ddp_orig: V2)
                 }
 
                 //minkowski
-                let diameter_w = test_low_entity.width + player.low.width;
-                let diameter_h = test_low_entity.height + player.low.height;
+                let diameter_w = test_low_entity.width + entity.low.width;
+                let diameter_h = test_low_entity.height + entity.low.height;
                 let corner_x = V2::new(-0.5 * diameter_w, 0.5 * diameter_w);
                 let corner_y = V2::new(-0.5 * diameter_h, 0.5 * diameter_h);
 
-                let rel: V2 = player.high.p - test_entity.p;
+                let rel: V2 = entity.high.p - test_entity.p;
 
                 if test_wall(&mut t_min, corner_x.min(), rel, player_delta, corner_y) {
                     wall_normal = V2::new(-1.0, 0.0);
@@ -324,11 +329,11 @@ fn move_player(state: &mut GameState, mut player: Entity, dt: f32, ddp_orig: V2)
                 }
             }
 
-            //move player
-            player.high.p += t_min * player_delta;
+            //move entity
+            entity.high.p += t_min * player_delta;
             if let Some(_collided_idx) = collided_idx.take() {
-                player.high.dp = player.high.dp - player.high.dp.inner(wall_normal) * wall_normal;
-                player_delta = desired_position - player.high.p;
+                entity.high.dp = entity.high.dp - entity.high.dp.inner(wall_normal) * wall_normal;
+                player_delta = desired_position - entity.high.p;
                 player_delta = player_delta - player_delta.inner(wall_normal) * wall_normal;
             //TODO update absZ
             } else {
@@ -339,37 +344,28 @@ fn move_player(state: &mut GameState, mut player: Entity, dt: f32, ddp_orig: V2)
 
     //facing direction
     {
-        if player.high.dp.x() == 0.0 && player.high.dp.y() == 0.0 {
+        if entity.high.dp.x() == 0.0 && entity.high.dp.y() == 0.0 {
             //do not change
-        } else if player.high.dp.x().abs() > player.high.dp.y().abs() {
-            if player.high.dp.x() > 0.0 {
+        } else if entity.high.dp.x().abs() > entity.high.dp.y().abs() {
+            if entity.high.dp.x() > 0.0 {
                 //right
-                player.high.facing_direction = 1;
+                entity.high.facing_direction = 1;
             } else {
                 //left
-                player.high.facing_direction = 0;
+                entity.high.facing_direction = 0;
             }
         } else {
-            if player.high.dp.y() > 0.0 {
+            if entity.high.dp.y() > 0.0 {
                 //up
-                player.high.facing_direction = 3;
+                entity.high.facing_direction = 3;
             } else {
                 //down
-                player.high.facing_direction = 2;
+                entity.high.facing_direction = 2;
             }
         }
     }
 
-    let new_p = state
-        .world
-        .map_into_chunk_space(state.camera, player.high.p);
-
-    state
-        .world
-        .change_entity_chunks(player.low_idx, Some(player.low.p), new_p);
-    player.low.p = new_p;
-
-    player
+    entity
 }
 
 fn update_camera(state: &mut GameState, new_camera: WorldPosition) {
@@ -430,21 +426,31 @@ pub struct GameState {
 }
 
 impl GameState {
+    fn start(&mut self) {
+        self.world = World::new();
+        self.camera = self.world.initial_camera();
+        self.entities = EntityStorage::new();
+        self.entity_focused_by_camera = None;
+        let idx = self.add_player(self.world.initial_player());
+        self.entity_focused_by_camera = Some(idx);
+        self.add_monster(self.world.initial_monster());
+        self.add_familiars();
+        self.add_walls();
+        update_camera(self, self.camera);
+    }
+
     fn tile_side(&self) -> f32 {
         self.world.tile_side
     }
 
-    fn update_player(&mut self, entity: Entity) {
+    fn update_entity(&mut self, mut entity: Entity) {
+        let new_p = self.world.map_into_chunk_space(self.camera, entity.high.p);
+
+        self.world
+            .change_entity_chunks(entity.low_idx, Some(entity.low.p), new_p);
+        entity.low.p = new_p;
+
         self.entities.update(entity)
-    }
-
-    fn player(&mut self) -> Entity {
-        self.entity(self.entity_focused_by_camera.unwrap())
-    }
-
-    fn entity(&mut self, low_idx: usize) -> Entity {
-        self.make_high(low_idx);
-        self.entities.entity(low_idx)
     }
 
     //promote
@@ -478,6 +484,39 @@ impl GameState {
         }
     }
 
+    fn add_familiars(&mut self) {
+        self.add_familiar(self.world.initial_camera());
+    }
+
+    fn update_familiar(&mut self, mut entity: Entity, dt: f32) -> Entity {
+        let closest_distance = 10.0f32.powi(2);
+        let mut closest_hero = None;
+
+        entity.high.t_bob += dt;
+        if entity.high.t_bob >= (2.0 * std::f32::consts::PI) {
+            entity.high.t_bob -= 2.0 * std::f32::consts::PI;
+        }
+
+        for high in self.entities.high_slice() {
+            let low = self.entities.low(high.low_entity_idx);
+            if low.kind == EntityKind::Player {
+                let distance = (high.p - entity.high.p).len();
+                if distance < closest_distance && distance > 2.0 {
+                    closest_hero = Some(high.p);
+                }
+            }
+        }
+
+        if let Some(hero_p) = closest_hero {
+            let acc = 0.5;
+            let one_over_length = acc / closest_distance.sqrt();
+            let ddp = one_over_length * (hero_p - entity.high.p);
+            move_entity(self, entity, dt, ddp)
+        } else {
+            entity
+        }
+    }
+
     fn add_walls(&mut self) {
         let walls = self.world.walls.clone();
         for abs in walls {
@@ -501,6 +540,36 @@ impl GameState {
         low_entity_idx
     }
 
+    fn add_monster(&mut self, p: WorldPosition) -> usize {
+        let player = LowEntity {
+            kind: EntityKind::Monster,
+            p,
+            width: 1.0,
+            height: 0.5,
+            abs_tile_z: 0,
+            collides: true,
+            high_entity_idx: None,
+        };
+        let idx = self.entities.push_low(player);
+        self.world.change_entity_chunks(idx, None, p);
+        idx
+    }
+
+    fn add_familiar(&mut self, p: WorldPosition) -> usize {
+        let player = LowEntity {
+            kind: EntityKind::Familiar,
+            p,
+            width: 1.0,
+            height: 0.5,
+            abs_tile_z: 0,
+            collides: false,
+            high_entity_idx: None,
+        };
+        let idx = self.entities.push_low(player);
+        self.world.change_entity_chunks(idx, None, p);
+        idx
+    }
+
     fn add_player(&mut self, p: WorldPosition) -> usize {
         let player = LowEntity {
             kind: EntityKind::Player,
@@ -521,4 +590,26 @@ pub struct HeroBitmaps {
     head: Bitmap,
     cape: Bitmap,
     torso: Bitmap,
+}
+
+pub struct EntityVisiblePiece<'a> {
+    bitmap: &'a Bitmap,
+    offset: V2,
+    _offset_z: f32,
+    alpha: f32,
+}
+
+impl<'a> EntityVisiblePiece<'a> {
+    fn new_offset(bitmap: &'a Bitmap, alpha: f32, _offset_z: f32) -> Self {
+        let offset = V2::new(bitmap.align_x as f32, bitmap.align_y as f32);
+        Self {
+            bitmap,
+            offset,
+            _offset_z,
+            alpha,
+        }
+    }
+    fn new(bitmap: &'a Bitmap, alpha: f32) -> Self {
+        Self::new_offset(bitmap, alpha, 1.0)
+    }
 }

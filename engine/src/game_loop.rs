@@ -1,22 +1,18 @@
+use super::host_api::*;
 use sdl2::event::Event;
 use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
-// use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum;
-// use sdl2::rect::Rect;
+use sdl2::rect::Rect;
 use sdl2::render::Texture;
 use sdl2::render::TextureCreator;
 use sdl2::video::WindowContext;
-// use std::marker::PhantomData;
-use super::host_api::*;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
 mod audio;
 mod bmp;
 mod input;
-
-// use super::*;
 
 use super::reloader::*;
 use audio::Audio;
@@ -124,7 +120,8 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
 
         (api.update)(state, &input, &mut host_api);
         canvas.clear();
-        canvas.copy(&host_api.texture, None, None)?;
+        let (width, height) = canvas.window().size();
+        canvas.copy(&host_api.texture, None, Rect::new(0, 0, width / 2, height / 2))?;
         canvas.present();
         input::swap(&mut input);
 

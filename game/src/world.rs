@@ -80,6 +80,16 @@ pub enum TileKind {
 }
 
 impl World {
+    pub fn initial_monster(&self) -> WorldPosition {
+        let center = self.position_at_tile(17/2 + 2, 9/2 + 2, 0);
+        center
+    }
+
+    pub fn initial_player(&self) -> WorldPosition {
+        let center = self.position_at_tile(17/2, 9/2, 0);
+        center
+    }
+
     pub fn initial_camera(&self) -> WorldPosition {
         WorldPosition {
             // abs: ChunkIdx::new(self.middle + 17 / 2, self.middle + 9 / 2, self.middle + 0),
