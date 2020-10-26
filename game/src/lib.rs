@@ -157,51 +157,116 @@ pub extern "C" fn game_update(
             let low = state.entities.low(high.low_entity_idx);
 
             let hero_bitmaps = &state.hero_bitmaps[high.facing_direction];
+            let magenta = Color {
+                red: 1.0,
+                green: 0.0,
+                blue: 1.0,
+            };
+            let debug = false;
+
             match low.kind {
                 EntityKind::Player => {
-                    // entity_pieces.push(EntityVisiblePiece::new(&state.shadow, 1.0));
-                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.torso, 1.0));
-                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.cape, 1.0));
-                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.head, 1.0));
+                    let size = V2::new(low.width, low.height);
+                    if debug {
+                        let offset = 0.5 * size;
+                        entity_pieces.push(EntityVisiblePiece::new_rect(
+                            magenta, size, offset, 1.0, 1.0,
+                        ));
+                    }
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(&state.shadow, 1.0, 1.0));
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(
+                        &hero_bitmaps.torso,
+                        1.0,
+                        1.0,
+                    ));
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(
+                        &hero_bitmaps.cape,
+                        1.0,
+                        1.0,
+                    ));
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(
+                        &hero_bitmaps.head,
+                        1.0,
+                        1.0,
+                    ));
+
+                    {
+                        let health_dim = V2::new(0.2, 0.2);
+                        let spacing_x = 1.5 * health_dim.x();
+                        let mut hit_p =
+                            V2::new(-0.5 * (low.hit_points.len() - 1) as f32 * spacing_x, -0.25);
+                        let dhit_p = V2::new(spacing_x, 0.0);
+                        for _ in &low.hit_points {
+                            let red = Color {
+                                red: 1.0,
+                                green: 0.0,
+                                blue: 0.0,
+                            };
+
+                            entity_pieces.push(EntityVisiblePiece::new_rect(
+                                red, health_dim, hit_p, 1.0, 0.0,
+                            ));
+                            hit_p += dhit_p;
+                        }
+                    }
                 }
                 EntityKind::Wall => {
-                    entity_pieces.push(EntityVisiblePiece::new(&state.tree, 1.0));
+                    if debug {
+                        let size = V2::new(low.width, low.height);
+                        let offset = 0.5 * size;
+                        entity_pieces.push(EntityVisiblePiece::new_rect(
+                            magenta, size, offset, 1.0, 1.0,
+                        ));
+                    }
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(&state.tree, 1.0, 1.0));
                 }
                 EntityKind::Familiar => {
-                    entity_pieces.push(EntityVisiblePiece::new_offset(&state.shadow, 1.0, high.t_bob));
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(
+                        &hero_bitmaps.head,
+                        1.0,
+                        1.0,
+                    ));
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(
+                        &state.shadow,
+                        1.0,
+                        high.t_bob,
+                    ));
                 }
                 EntityKind::Monster => {
-                    entity_pieces.push(EntityVisiblePiece::new(&hero_bitmaps.torso, 1.0));
+                    entity_pieces.push(EntityVisiblePiece::new_bitmap(
+                        &hero_bitmaps.torso,
+                        1.0,
+                        1.0,
+                    ));
                 }
             }
-
-            let debug = false;
 
             let entity_ground_x = screen_center_x + meters_to_pixels * high.p.x();
             let bob_offset = 0.3 * (high.t_bob * 3.0).sin();
             let entity_ground_y = screen_center_y - meters_to_pixels * (high.p.y() + bob_offset);
             let entity_ground = V2::new(entity_ground_x, entity_ground_y);
             //bitmap renders with inversed Y (hence top, not bottom)
-            for piece in entity_pieces {
-                if debug {
-                    let color = Color {
-                        red: 1.0,
-                        green: 1.0,
-                        blue: 0.0,
-                    };
-                    let width_height = V2::new(low.width, low.height);
-                    let entity_left_top = entity_ground - 0.5 * meters_to_pixels * width_height;
-                    state.offscreen_buffer.render_rectangle(
-                        entity_left_top,
-                        entity_left_top + meters_to_pixels * width_height * 0.9,
-                        color,
-                    );
+            for (idx, piece) in entity_pieces.iter().enumerate() {
+                match piece.kind {
+                    PieceKind::Bitmap(bitmap) => {
+                        state.offscreen_buffer.render_bitmap(
+                            bitmap,
+                            entity_ground - piece.offset,
+                            piece.alpha,
+                        );
+                    }
+                    PieceKind::Rect(color, size) => {
+                        println!("{}", idx);
+                        let half = 0.5 * meters_to_pixels * size;
+                        let center = entity_ground + meters_to_pixels * piece.offset;
+                        let left_top = center - half;
+                        state.offscreen_buffer.render_rectangle(
+                            left_top,
+                            left_top + size * meters_to_pixels * 0.9,
+                            color,
+                        )
+                    }
                 }
-                state.offscreen_buffer.render_bitmap(
-                    piece.bitmap,
-                    entity_ground - piece.offset,
-                    piece.alpha,
-                );
             }
         }
     }
@@ -534,6 +599,7 @@ impl GameState {
             abs_tile_z: 0,
             collides: true,
             high_entity_idx: None,
+            hit_points: vec![],
         };
         let low_entity_idx = self.entities.push_low(entity);
         self.world.change_entity_chunks(low_entity_idx, None, p);
@@ -549,6 +615,7 @@ impl GameState {
             abs_tile_z: 0,
             collides: true,
             high_entity_idx: None,
+            hit_points: vec![],
         };
         let idx = self.entities.push_low(player);
         self.world.change_entity_chunks(idx, None, p);
@@ -564,6 +631,7 @@ impl GameState {
             abs_tile_z: 0,
             collides: false,
             high_entity_idx: None,
+            hit_points: vec![],
         };
         let idx = self.entities.push_low(player);
         self.world.change_entity_chunks(idx, None, p);
@@ -579,6 +647,7 @@ impl GameState {
             abs_tile_z: 0,
             collides: true,
             high_entity_idx: None,
+            hit_points: vec![HitPoint::full(); 3],
         };
         let idx = self.entities.push_low(player);
         self.world.change_entity_chunks(idx, None, p);
@@ -593,23 +662,34 @@ pub struct HeroBitmaps {
 }
 
 pub struct EntityVisiblePiece<'a> {
-    bitmap: &'a Bitmap,
+    kind: PieceKind<'a>,
     offset: V2,
     _offset_z: f32,
     alpha: f32,
 }
 
+enum PieceKind<'a> {
+    Bitmap(&'a Bitmap),
+    Rect(Color, V2),
+}
+
 impl<'a> EntityVisiblePiece<'a> {
-    fn new_offset(bitmap: &'a Bitmap, alpha: f32, _offset_z: f32) -> Self {
-        let offset = V2::new(bitmap.align_x as f32, bitmap.align_y as f32);
+    fn new_rect(color: Color, size: V2, offset: V2, alpha: f32, _offset_z: f32) -> Self {
         Self {
-            bitmap,
+            kind: PieceKind::Rect(color, size),
             offset,
             _offset_z,
             alpha,
         }
     }
-    fn new(bitmap: &'a Bitmap, alpha: f32) -> Self {
-        Self::new_offset(bitmap, alpha, 1.0)
+
+    fn new_bitmap(bitmap: &'a Bitmap, alpha: f32, _offset_z: f32) -> Self {
+        let offset = V2::new(bitmap.align_x as f32, bitmap.align_y as f32);
+        Self {
+            kind: PieceKind::Bitmap(bitmap),
+            offset,
+            _offset_z,
+            alpha,
+        }
     }
 }

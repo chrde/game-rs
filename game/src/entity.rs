@@ -32,6 +32,8 @@ impl HighEntity {
     }
 }
 
+const HIT_POINT_SUB_COUNT: u8 = 4;
+
 #[derive(Clone, Debug)]
 pub struct LowEntity {
     pub kind: EntityKind,
@@ -41,6 +43,22 @@ pub struct LowEntity {
     pub abs_tile_z: i32,
     pub collides: bool,
     pub high_entity_idx: Option<usize>,
+    pub hit_points: Vec<HitPoint>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct HitPoint {
+    flags: u8,
+    filled: u8,
+}
+
+impl HitPoint {
+    pub fn full() -> Self {
+        Self {
+            flags: 0,
+            filled: HIT_POINT_SUB_COUNT,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
