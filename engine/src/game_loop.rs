@@ -18,9 +18,7 @@ use super::reloader::*;
 use audio::Audio;
 
 fn new_texture(
-    creator: &TextureCreator<WindowContext>,
-    width: u32,
-    height: u32,
+    creator: &TextureCreator<WindowContext>, width: u32, height: u32,
 ) -> Result<Texture<'_>, String> {
     creator
         .create_texture_streaming(PixelFormatEnum::ARGB8888, width, height)
@@ -121,7 +119,11 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
         (api.update)(state, &input, &mut host_api);
         canvas.clear();
         let (width, height) = canvas.window().size();
-        canvas.copy(&host_api.texture, None, Rect::new(0, 0, width / 2, height / 2))?;
+        canvas.copy(
+            &host_api.texture,
+            None,
+            Rect::new(0, 0, width / 2, height / 2),
+        )?;
         canvas.present();
         input::swap(&mut input);
 

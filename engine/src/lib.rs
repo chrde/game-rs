@@ -8,7 +8,7 @@
 //     pub green_offset: usize,
 // }
 
-#[path="../../src/host_api.rs"]
+#[path = "../../src/host_api.rs"]
 mod host_api;
 
 pub mod game_loop;

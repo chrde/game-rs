@@ -34,7 +34,7 @@ impl HighEntity {
 
 const HIT_POINT_SUB_COUNT: u8 = 4;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct LowEntity {
     pub kind: EntityKind,
     pub p: WorldPosition,
@@ -44,6 +44,8 @@ pub struct LowEntity {
     pub collides: bool,
     pub high_entity_idx: Option<usize>,
     pub hit_points: Vec<HitPoint>,
+    pub sword: Option<usize>,
+    pub distance_remaining: f32,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -66,7 +68,14 @@ pub enum EntityKind {
     Wall,
     Player,
     Familiar,
-    Monster
+    Monster,
+    Sword,
+}
+
+impl Default for EntityKind {
+    fn default() -> Self {
+        EntityKind::Wall
+    }
 }
 
 //TODO remove the clones, extract entities from world

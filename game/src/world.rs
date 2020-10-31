@@ -8,7 +8,7 @@ pub struct WorldDiff {
     pub z: f32,
 }
 
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Default, Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ChunkIdx {
     pub x: i32,
     pub y: i32,
@@ -22,7 +22,7 @@ impl ChunkIdx {
 }
 
 /// Position of chunk in the global map
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct WorldPosition {
     pub abs: ChunkIdx,
 
@@ -81,12 +81,12 @@ pub enum TileKind {
 
 impl World {
     pub fn initial_monster(&self) -> WorldPosition {
-        let center = self.position_at_tile(17/2 + 2, 9/2 + 2, 0);
+        let center = self.position_at_tile(17 / 2 + 2, 9 / 2 + 2, 0);
         center
     }
 
     pub fn initial_player(&self) -> WorldPosition {
-        let center = self.position_at_tile(17/2, 9/2, 0);
+        let center = self.position_at_tile(17 / 2, 9 / 2, 0);
         center
     }
 
@@ -218,10 +218,7 @@ impl World {
     }
 
     pub fn change_entity_chunks(
-        &mut self,
-        low_entity_idx: usize,
-        old: Option<WorldPosition>,
-        new: WorldPosition,
+        &mut self, low_entity_idx: usize, old: Option<WorldPosition>, new: WorldPosition,
     ) {
         if old.map_or(false, |old| self.same_chunk(old, new)) {
             return;

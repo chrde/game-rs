@@ -53,9 +53,7 @@ pub extern "C" fn game_restart(state: &mut GameState) {
 
 #[no_mangle]
 pub extern "C" fn game_update(
-    state: &mut GameState,
-    input: &Input,
-    host_api: &mut dyn HostApi,
+    state: &mut GameState, input: &Input, host_api: &mut dyn HostApi,
 ) -> bool {
     let tile_side_in_pixels: f32 = 60.0;
     let meters_to_pixels = tile_side_in_pixels as f32 / state.tile_side();
@@ -84,6 +82,7 @@ pub extern "C" fn game_update(
 
             V2::new(player_x_offset, player_y_offset)
         };
+        // TODO check for some keypress, and create a sword
 
         for high in state.entities.high_slice().to_vec().iter() {
             let low = state.entities.low(high.low_entity_idx);
@@ -91,8 +90,19 @@ pub extern "C" fn game_update(
             match low.kind {
                 EntityKind::Player => {
                     let entity = state.entities.entity(high.low_entity_idx);
-                    let entity = move_entity(&state, entity, input.time_per_frame, ddp);
+                    let spec = MoveSpec {
+                        unit_max_accel_vector: true,
+                        speed: 5.0 * 50.0,
+                        drag: 8.0,
+                    };
+                    let entity = move_entity(&state, entity, input.time_per_frame, ddp, spec);
                     state.update_entity(entity);
+                }
+                EntityKind::Sword => {
+                    // TODO
+                    // let entity = state.entities.entity(high.low_entity_idx);
+                    // let entity = state.update_sword(entity, input.time_per_frame);
+                    // state.update_entity(entity);
                 }
                 EntityKind::Familiar => {
                     let entity = state.entities.entity(high.low_entity_idx);
@@ -210,6 +220,7 @@ pub extern "C" fn game_update(
                         }
                     }
                 }
+                EntityKind::Sword => {}
                 EntityKind::Wall => {
                     if debug {
                         let size = V2::new(low.width, low.height);
@@ -246,7 +257,7 @@ pub extern "C" fn game_update(
             let entity_ground_y = screen_center_y - meters_to_pixels * (high.p.y() + bob_offset);
             let entity_ground = V2::new(entity_ground_x, entity_ground_y);
             //bitmap renders with inversed Y (hence top, not bottom)
-            for (idx, piece) in entity_pieces.iter().enumerate() {
+            for piece in &entity_pieces {
                 match piece.kind {
                     PieceKind::Bitmap(bitmap) => {
                         state.offscreen_buffer.render_bitmap(
@@ -256,7 +267,6 @@ pub extern "C" fn game_update(
                         );
                     }
                     PieceKind::Rect(color, size) => {
-                        println!("{}", idx);
                         let half = 0.5 * meters_to_pixels * size;
                         let center = entity_ground + meters_to_pixels * piece.offset;
                         let left_top = center - half;
@@ -322,18 +332,27 @@ fn load_hero(host_api: &dyn HostApi) -> Vec<HeroBitmaps> {
     result
 }
 
-fn move_entity(state: &GameState, mut entity: Entity, dt: f32, ddp_orig: V2) -> Entity {
+#[derive(Copy, Clone, Debug)]
+struct MoveSpec {
+    unit_max_accel_vector: bool,
+    speed: f32,
+    drag: f32,
+}
+
+fn move_entity(
+    state: &GameState, mut entity: Entity, dt: f32, ddp_orig: V2, spec: MoveSpec,
+) -> Entity {
     let mut ddp = ddp_orig;
 
-    //normalize (e.g: diagonal)
-    if ddp.len() > 1.0 {
-        ddp *= 1.0 / ddp.len().sqrt();
+    if spec.unit_max_accel_vector {
+        //normalize (e.g: diagonal)
+        if ddp.len_sq() > 1.0 {
+            ddp *= 1.0 / ddp.len_sq().sqrt();
+        }
     }
-    let player_speed = 5.0 * 50.0; // m/s^2
-    ddp *= player_speed;
+    ddp *= spec.speed;
 
-    let friction = -8.0;
-    ddp += friction * entity.high.dp;
+    ddp = ddp - spec.drag * entity.high.dp;
 
     let mut player_delta: V2 = 0.5 * ddp * dt.powi(2) + entity.high.dp * dt;
     entity.high.dp = ddp * dt + entity.high.dp;
@@ -346,51 +365,53 @@ fn move_entity(state: &GameState, mut entity: Entity, dt: f32, ddp_orig: V2) -> 
             let mut wall_normal = V2::default();
             let mut collided_idx = None;
             for (high_idx, test_entity) in state.entities.high_slice().iter().enumerate() {
-                if test_entity.low_entity_idx == entity.high.low_entity_idx {
-                    continue;
-                }
-                let test_low_entity = state.entities.low(test_entity.low_entity_idx);
-                if !test_low_entity.collides {
-                    continue;
-                }
+                if entity.low.collides {
+                    if test_entity.low_entity_idx == entity.high.low_entity_idx {
+                        continue;
+                    }
+                    let test_low_entity = state.entities.low(test_entity.low_entity_idx);
+                    if !test_low_entity.collides {
+                        continue;
+                    }
 
-                //minkowski
-                let diameter_w = test_low_entity.width + entity.low.width;
-                let diameter_h = test_low_entity.height + entity.low.height;
-                let corner_x = V2::new(-0.5 * diameter_w, 0.5 * diameter_w);
-                let corner_y = V2::new(-0.5 * diameter_h, 0.5 * diameter_h);
+                    //minkowski
+                    let diameter_w = test_low_entity.width + entity.low.width;
+                    let diameter_h = test_low_entity.height + entity.low.height;
+                    let corner_x = V2::new(-0.5 * diameter_w, 0.5 * diameter_w);
+                    let corner_y = V2::new(-0.5 * diameter_h, 0.5 * diameter_h);
 
-                let rel: V2 = entity.high.p - test_entity.p;
+                    let rel: V2 = entity.high.p - test_entity.p;
 
-                if test_wall(&mut t_min, corner_x.min(), rel, player_delta, corner_y) {
-                    wall_normal = V2::new(-1.0, 0.0);
-                    collided_idx = Some(high_idx);
-                }
-                if test_wall(&mut t_min, corner_x.max(), rel, player_delta, corner_y) {
-                    wall_normal = V2::new(1.0, 0.0);
-                    collided_idx = Some(high_idx);
-                }
+                    if test_wall(&mut t_min, corner_x.min(), rel, player_delta, corner_y) {
+                        wall_normal = V2::new(-1.0, 0.0);
+                        collided_idx = Some(high_idx);
+                    }
+                    if test_wall(&mut t_min, corner_x.max(), rel, player_delta, corner_y) {
+                        wall_normal = V2::new(1.0, 0.0);
+                        collided_idx = Some(high_idx);
+                    }
 
-                if test_wall(
-                    &mut t_min,
-                    corner_y.min(),
-                    rel.rev(),
-                    player_delta.rev(),
-                    corner_x,
-                ) {
-                    wall_normal = V2::new(0.0, -1.0);
-                    collided_idx = Some(high_idx);
-                }
+                    if test_wall(
+                        &mut t_min,
+                        corner_y.min(),
+                        rel.rev(),
+                        player_delta.rev(),
+                        corner_x,
+                    ) {
+                        wall_normal = V2::new(0.0, -1.0);
+                        collided_idx = Some(high_idx);
+                    }
 
-                if test_wall(
-                    &mut t_min,
-                    corner_y.max(),
-                    rel.rev(),
-                    player_delta.rev(),
-                    corner_x,
-                ) {
-                    wall_normal = V2::new(0.0, 1.0);
-                    collided_idx = Some(high_idx);
+                    if test_wall(
+                        &mut t_min,
+                        corner_y.max(),
+                        rel.rev(),
+                        player_delta.rev(),
+                        corner_x,
+                    ) {
+                        wall_normal = V2::new(0.0, 1.0);
+                        collided_idx = Some(high_idx);
+                    }
                 }
             }
 
@@ -508,6 +529,7 @@ impl GameState {
         self.world.tile_side
     }
 
+    //TODO inline this in each update_X
     fn update_entity(&mut self, mut entity: Entity) {
         let new_p = self.world.map_into_chunk_space(self.camera, entity.high.p);
 
@@ -553,6 +575,25 @@ impl GameState {
         self.add_familiar(self.world.initial_camera());
     }
 
+    fn update_sword(&mut self, entity: Entity, dt: f32) -> Entity {
+        let spec = MoveSpec {
+            unit_max_accel_vector: false,
+            speed: 0.0,
+            drag: 0.0,
+        };
+        let old_p = entity.high.p;
+        let mut entity = move_entity(&self, entity, dt, V2::default(), spec);
+        {
+            // TODO this should be in the 'main' switch
+            let distance_traveled = (entity.high.p - old_p).len();
+            entity.low.distance_remaining -= distance_traveled;
+            if entity.low.distance_remaining < 0.0 {
+                // TODO hide entity
+            }
+        }
+        entity
+    }
+
     fn update_familiar(&mut self, mut entity: Entity, dt: f32) -> Entity {
         let closest_distance = 10.0f32.powi(2);
         let mut closest_hero = None;
@@ -565,7 +606,7 @@ impl GameState {
         for high in self.entities.high_slice() {
             let low = self.entities.low(high.low_entity_idx);
             if low.kind == EntityKind::Player {
-                let distance = (high.p - entity.high.p).len();
+                let distance = (high.p - entity.high.p).len_sq();
                 if distance < closest_distance && distance > 2.0 {
                     closest_hero = Some(high.p);
                 }
@@ -576,7 +617,12 @@ impl GameState {
             let acc = 0.5;
             let one_over_length = acc / closest_distance.sqrt();
             let ddp = one_over_length * (hero_p - entity.high.p);
-            move_entity(self, entity, dt, ddp)
+            let spec = MoveSpec {
+                unit_max_accel_vector: true,
+                speed: 50.0,
+                drag: 8.0,
+            };
+            move_entity(self, entity, dt, ddp, spec)
         } else {
             entity
         }
@@ -596,10 +642,8 @@ impl GameState {
             p,
             width: self.tile_side(),
             height: self.tile_side(),
-            abs_tile_z: 0,
             collides: true,
-            high_entity_idx: None,
-            hit_points: vec![],
+            ..Default::default()
         };
         let low_entity_idx = self.entities.push_low(entity);
         self.world.change_entity_chunks(low_entity_idx, None, p);
@@ -612,10 +656,8 @@ impl GameState {
             p,
             width: 1.0,
             height: 0.5,
-            abs_tile_z: 0,
             collides: true,
-            high_entity_idx: None,
-            hit_points: vec![],
+            ..Default::default()
         };
         let idx = self.entities.push_low(player);
         self.world.change_entity_chunks(idx, None, p);
@@ -628,10 +670,7 @@ impl GameState {
             p,
             width: 1.0,
             height: 0.5,
-            abs_tile_z: 0,
-            collides: false,
-            high_entity_idx: None,
-            hit_points: vec![],
+            ..Default::default()
         };
         let idx = self.entities.push_low(player);
         self.world.change_entity_chunks(idx, None, p);
@@ -644,12 +683,25 @@ impl GameState {
             p,
             width: 1.0,
             height: 0.5,
-            abs_tile_z: 0,
             collides: true,
-            high_entity_idx: None,
             hit_points: vec![HitPoint::full(); 3],
+            sword: Some(self.add_sword()),
+            ..Default::default()
         };
         let idx = self.entities.push_low(player);
+        self.world.change_entity_chunks(idx, None, p);
+        idx
+    }
+
+    fn add_sword(&mut self) -> usize {
+        let entity = LowEntity {
+            kind: EntityKind::Sword,
+            width: 1.0,
+            height: 0.5,
+            ..Default::default()
+        };
+        let p = entity.p;
+        let idx = self.entities.push_low(entity);
         self.world.change_entity_chunks(idx, None, p);
         idx
     }

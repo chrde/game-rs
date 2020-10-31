@@ -1,6 +1,6 @@
 use sdl2::audio::AudioQueue;
+use sdl2::audio::AudioSpecDesired;
 use sdl2::audio::AudioStatus;
-use sdl2::audio::{AudioSpecDesired};
 use sdl2::AudioSubsystem;
 
 struct Sound {

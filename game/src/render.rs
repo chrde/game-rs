@@ -85,12 +85,7 @@ impl OffscreenBuffer {
         }
     }
 
-    pub fn render_bitmap(
-        &mut self,
-        bitmap: &Bitmap,
-        xy: V2,
-        c_alpha: f32,
-    ) {
+    pub fn render_bitmap(&mut self, bitmap: &Bitmap, xy: V2, c_alpha: f32) {
         let real_x = xy.x();
         let real_y = xy.y();
 
@@ -130,8 +125,9 @@ impl OffscreenBuffer {
             }
         };
 
-        let mut source_offset_pixel =
-            (bitmap.width * (bitmap.height - 1)).saturating_sub(source_offset_y * bitmap.width) + source_offset_x;
+        let mut source_offset_pixel = (bitmap.width * (bitmap.height - 1))
+            .saturating_sub(source_offset_y * bitmap.width)
+            + source_offset_x;
 
         let mut dest_offset_pixel = min_y as usize * self.width + min_x as usize;
         for _ in min_y..max_y {

@@ -32,6 +32,10 @@ impl V2 {
     }
 
     pub fn len(self) -> f32 {
+        Self::inner(self, self).sqrt()
+    }
+
+    pub fn len_sq(self) -> f32 {
         Self::inner(self, self)
     }
 

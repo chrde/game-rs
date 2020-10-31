@@ -30,7 +30,10 @@ impl Rect2 {
     }
 
     pub fn contains(&self, test: V2) -> bool {
-        test.x() >= self.min.x() && test.y() >= self.min.y() && test.x() < self.max.x() && test.y() < self.max.y()
+        test.x() >= self.min.x()
+            && test.y() >= self.min.y()
+            && test.x() < self.max.x()
+            && test.y() < self.max.y()
     }
 
     pub fn center(&self) -> V2 {
