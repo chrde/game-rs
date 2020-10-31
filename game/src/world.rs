@@ -22,12 +22,35 @@ impl ChunkIdx {
 }
 
 /// Position of chunk in the global map
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug)]
 pub struct WorldPosition {
     pub abs: ChunkIdx,
 
     /// offset from chunk center
     pub offset: V2,
+}
+
+impl Default for WorldPosition {
+    fn default() -> Self {
+        Self {
+            abs: ChunkIdx::new(TILE_CHUNK_UNINITIALIZED, 0, 0),
+            offset: V2::default(),
+        }
+    }
+}
+
+impl WorldPosition {
+
+    // pub fn null_position() -> Self {
+    //     Self {
+    //         abs: ChunkIdx::new(TILE_CHUNK_UNINITIALIZED, 0, 0),
+    //         ..Default::default()
+    //     }
+    // }
+
+    fn is_valid(&self) -> bool {
+        self.abs.x != TILE_CHUNK_UNINITIALIZED
+    }
 }
 
 #[derive(Debug)]
@@ -46,6 +69,7 @@ pub struct Chunk {
 }
 
 const TILES_PER_CHUNK: u16 = 16;
+const TILE_CHUNK_UNINITIALIZED: i32 = std::i32::MAX;
 
 impl Chunk {
     fn new(idx: ChunkIdx) -> Self {
@@ -93,8 +117,8 @@ impl World {
     pub fn initial_camera(&self) -> WorldPosition {
         WorldPosition {
             // abs: ChunkIdx::new(self.middle + 17 / 2, self.middle + 9 / 2, self.middle + 0),
-            abs: ChunkIdx::new(0, 0, 0),
             offset: V2::new(1.5, 1.5),
+            ..Default::default()
         }
     }
 
@@ -159,7 +183,8 @@ impl World {
     }
 
     fn is_canonical(&self, rel: f32) -> bool {
-        rel >= -0.5 * self.chunk_side && rel <= 0.5 * self.chunk_side
+        let epsilon = 0.0001;
+        rel >= (-0.5 * self.chunk_side + epsilon) && (rel <= 0.5 * self.chunk_side + epsilon)
     }
 
     fn same_chunk(&self, a: WorldPosition, b: WorldPosition) -> bool {
@@ -218,21 +243,45 @@ impl World {
     }
 
     pub fn change_entity_chunks(
-        &mut self, low_entity_idx: usize, old: Option<WorldPosition>, new: WorldPosition,
+        &mut self, low_entity_idx: usize, entity: &mut LowEntity, new_p: WorldPosition,
     ) {
-        if old.map_or(false, |old| self.same_chunk(old, new)) {
-            return;
+        let old_p = if entity.p.is_valid() && entity.spatial() {
+            Some(entity.p)
+        } else {
+            None
+        };
+
+        let new_p = if new_p.is_valid() { Some(new_p) } else { None };
+
+        let same_chunk = match (old_p, new_p) {
+            (Some(old), Some(new)) => self.same_chunk(old, new),
+            _ => true,
+        };
+
+        if !same_chunk {
+            if let Some(old) = old_p {
+                assert!(old.is_valid());
+                self.chunks
+                    .get_mut(&old.abs)
+                    .and_then(|chunk| chunk.remove_entity(low_entity_idx))
+                    .expect("failed to remove from chunk");
+            }
+            if let Some(new) = new_p {
+                assert!(new.is_valid());
+                self.chunks
+                    .entry(new.abs)
+                    .or_insert_with(|| Chunk::new(new.abs))
+                    .entities
+                    .push(low_entity_idx);
+            }
         }
-        if let Some(old) = old {
-            self.chunks
-                .get_mut(&old.abs)
-                .and_then(|chunk| chunk.remove_entity(low_entity_idx))
-                .expect("failed to remove from chunk");
+
+        if let Some(new) = new_p {
+            entity.p = new;
+            entity.set_spatial(true);
+        } else {
+            entity.p = WorldPosition::default();
+            entity.set_spatial(false);
         }
-        self.chunks
-            .entry(new.abs)
-            .or_insert_with(|| Chunk::new(new.abs))
-            .entities
-            .push(low_entity_idx);
     }
 }

@@ -37,6 +37,7 @@ const HIT_POINT_SUB_COUNT: u8 = 4;
 #[derive(Clone, Debug, Default)]
 pub struct LowEntity {
     pub kind: EntityKind,
+    //TODO check who assigns this - can we impl spatial based on this?
     pub p: WorldPosition,
     pub width: f32,
     pub height: f32,
@@ -46,6 +47,17 @@ pub struct LowEntity {
     pub hit_points: Vec<HitPoint>,
     pub sword: Option<usize>,
     pub distance_remaining: f32,
+    pub spatial: bool,
+}
+
+impl LowEntity {
+    pub fn spatial(&self) -> bool {
+        self.spatial
+    }
+
+    pub fn set_spatial(&mut self, spatial: bool) {
+        self.spatial = spatial;
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -111,9 +123,12 @@ impl EntityStorage {
         valid
     }
 
-    pub fn push_low(&mut self, low_entity: LowEntity) -> usize {
+    pub fn low_len(&self) -> usize {
+        self.low_entities.len()
+    }
+
+    pub fn push_low(&mut self, low_entity: LowEntity) {
         self.low_entities.push(low_entity);
-        self.low_entities.len() - 1
     }
 
     pub fn low(&self, low_entity_idx: usize) -> &LowEntity {

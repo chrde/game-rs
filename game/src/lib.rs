@@ -15,7 +15,6 @@ use world::*;
 
 #[no_mangle]
 pub extern "C" fn game_init(host_api: &dyn HostApi) -> *mut GameState {
-    println!("hello");
     let width = 1920 / 2;
     let height = 1080 / 2;
     let bytes_per_pixel = 4;
@@ -119,7 +118,7 @@ pub extern "C" fn game_update(
     // move camera
     {
         if let Some(low_idx) = state.entity_focused_by_camera {
-            let entity = state.entities.entity(low_idx);
+            let entity = state.entities.entity(dbg!(low_idx));
             let new_camera = entity.low.p;
             // let mut new_camera = state.camera;
 
@@ -519,9 +518,9 @@ impl GameState {
         self.entity_focused_by_camera = None;
         let idx = self.add_player(self.world.initial_player());
         self.entity_focused_by_camera = Some(idx);
-        self.add_monster(self.world.initial_monster());
-        self.add_familiars();
-        self.add_walls();
+        // self.add_monster(self.world.initial_monster());
+        // self.add_familiars();
+        // self.add_walls();
         update_camera(self, self.camera);
     }
 
@@ -534,8 +533,7 @@ impl GameState {
         let new_p = self.world.map_into_chunk_space(self.camera, entity.high.p);
 
         self.world
-            .change_entity_chunks(entity.low_idx, Some(entity.low.p), new_p);
-        entity.low.p = new_p;
+            .change_entity_chunks(entity.low_idx, &mut entity.low, new_p);
 
         self.entities.update(entity)
     }
@@ -637,73 +635,77 @@ impl GameState {
     }
 
     fn add_wall(&mut self, p: WorldPosition) -> usize {
-        let entity = LowEntity {
+        let mut entity = LowEntity {
             kind: EntityKind::Wall,
-            p,
             width: self.tile_side(),
             height: self.tile_side(),
             collides: true,
+            spatial: true,
             ..Default::default()
         };
-        let low_entity_idx = self.entities.push_low(entity);
-        self.world.change_entity_chunks(low_entity_idx, None, p);
+        let low_entity_idx = self.entities.low_len();
+        self.world.change_entity_chunks(low_entity_idx, &mut entity, p);
+        self.entities.push_low(entity);
         low_entity_idx
     }
 
     fn add_monster(&mut self, p: WorldPosition) -> usize {
-        let player = LowEntity {
+        let mut entity = LowEntity {
             kind: EntityKind::Monster,
-            p,
             width: 1.0,
             height: 0.5,
             collides: true,
+            spatial: true,
             ..Default::default()
         };
-        let idx = self.entities.push_low(player);
-        self.world.change_entity_chunks(idx, None, p);
-        idx
+        let low_entity_idx = self.entities.low_len();
+        self.world.change_entity_chunks(low_entity_idx, &mut entity, p);
+        self.entities.push_low(entity);
+        low_entity_idx
     }
 
     fn add_familiar(&mut self, p: WorldPosition) -> usize {
-        let player = LowEntity {
+        let mut entity = LowEntity {
             kind: EntityKind::Familiar,
-            p,
             width: 1.0,
             height: 0.5,
+            spatial: true,
             ..Default::default()
         };
-        let idx = self.entities.push_low(player);
-        self.world.change_entity_chunks(idx, None, p);
-        idx
+        let low_entity_idx = self.entities.low_len();
+        self.world.change_entity_chunks(low_entity_idx, &mut entity, p);
+        self.entities.push_low(entity);
+        low_entity_idx
     }
 
     fn add_player(&mut self, p: WorldPosition) -> usize {
-        let player = LowEntity {
+        let mut entity = LowEntity {
             kind: EntityKind::Player,
-            p,
             width: 1.0,
             height: 0.5,
             collides: true,
+            spatial: true,
             hit_points: vec![HitPoint::full(); 3],
-            sword: Some(self.add_sword()),
+            // sword: Some(self.add_sword()),
             ..Default::default()
         };
-        let idx = self.entities.push_low(player);
-        self.world.change_entity_chunks(idx, None, p);
-        idx
+        let low_entity_idx = self.entities.low_len();
+        self.world.change_entity_chunks(low_entity_idx, &mut entity, p);
+        self.entities.push_low(entity);
+        low_entity_idx
     }
 
     fn add_sword(&mut self) -> usize {
-        let entity = LowEntity {
+        let mut entity = LowEntity {
             kind: EntityKind::Sword,
             width: 1.0,
             height: 0.5,
             ..Default::default()
         };
-        let p = entity.p;
-        let idx = self.entities.push_low(entity);
-        self.world.change_entity_chunks(idx, None, p);
-        idx
+        let low_entity_idx = self.entities.low_len();
+        self.world.change_entity_chunks(low_entity_idx, &mut entity, WorldPosition::default());
+        self.entities.push_low(entity);
+        low_entity_idx
     }
 }
 
