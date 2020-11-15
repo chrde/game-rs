@@ -23,6 +23,32 @@ pub struct Color {
     pub blue: f32,
 }
 
+impl Color {
+    pub fn red() -> Self {
+        Self {
+            red: 1.0,
+            green: 0.0,
+            blue: 0.0,
+        }
+    }
+
+    pub fn yellow() -> Self {
+        Self {
+            red: 1.0,
+            green: 1.0,
+            blue: 0.0,
+        }
+    }
+
+    pub fn magenta() -> Self {
+        Self {
+            red: 1.0,
+            green: 0.0,
+            blue: 1.0,
+        }
+    }
+}
+
 impl OffscreenBuffer {
     pub fn reset(&mut self) {
         for y in 0..self.height {

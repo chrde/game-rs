@@ -11,6 +11,7 @@ pub fn update(input: &mut Input, event: &Event) {
                     Keycode::Down => input.new.down = false,
                     Keycode::Left => input.new.left = false,
                     Keycode::Right => input.new.right = false,
+                    Keycode::S => input.new.sword = false,
                     _ => {}
                 }
             }
@@ -22,6 +23,7 @@ pub fn update(input: &mut Input, event: &Event) {
                     Keycode::Down => input.new.down = true,
                     Keycode::Left => input.new.left = true,
                     Keycode::Right => input.new.right = true,
+                    Keycode::S => input.new.sword = true,
                     _ => {}
                 }
             }

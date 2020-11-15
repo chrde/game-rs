@@ -40,6 +40,13 @@ impl Rect2 {
         0.5 * (self.min + self.max)
     }
 
+    pub fn add_radius(&self, radius: V2) -> Self {
+        Self {
+            min: self.min - radius,
+            max: self.max + radius,
+        }
+    }
+
     pub fn min(&self) -> V2 {
         self.min
     }

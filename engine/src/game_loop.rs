@@ -77,7 +77,7 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
     let mut start_frame = Instant::now();
     'running: loop {
         if reloader.try_recv().is_ok() {
-            println!("===== Reloading =====");
+            printn!("===== Reloading =====");
             std::mem::drop(api);
             game = game.reload().unwrap();
             api = game.api().unwrap();
@@ -115,6 +115,7 @@ pub fn main(reloader: Receiver<()>) -> Result<(), String> {
             input::update(&mut input, &event);
         }
         // The rest of the game loop goes here...
+        /// asdf
 
         (api.update)(state, &input, &mut host_api);
         canvas.clear();

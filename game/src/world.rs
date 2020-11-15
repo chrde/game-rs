@@ -40,6 +40,16 @@ impl Default for WorldPosition {
 }
 
 impl WorldPosition {
+    pub fn invalid_offset() -> V2 {
+        V2::new(100000.0, 100000.0)
+    }
+
+    pub fn origin() -> Self {
+        Self {
+            abs: ChunkIdx::default(),
+            offset: V2::default(),
+        }
+    }
 
     // pub fn null_position() -> Self {
     //     Self {
@@ -105,21 +115,22 @@ pub enum TileKind {
 
 impl World {
     pub fn initial_monster(&self) -> WorldPosition {
-        let center = self.position_at_tile(17 / 2 + 2, 9 / 2 + 2, 0);
-        center
+        let center = self.position_at_tile(17 / 2 + 1, 9 / 2 + 1, 0);
+        self.map_into_chunk_space(center, V2::default())
     }
 
     pub fn initial_player(&self) -> WorldPosition {
         let center = self.position_at_tile(17 / 2, 9 / 2, 0);
-        center
+        self.map_into_chunk_space(center, V2::default())
     }
 
     pub fn initial_camera(&self) -> WorldPosition {
-        WorldPosition {
+        let center = WorldPosition {
             // abs: ChunkIdx::new(self.middle + 17 / 2, self.middle + 9 / 2, self.middle + 0),
             offset: V2::new(1.5, 1.5),
-            ..Default::default()
-        }
+            abs: ChunkIdx::default(),
+        };
+        self.map_into_chunk_space(center, V2::default())
     }
 
     pub fn new() -> Self {
@@ -136,6 +147,17 @@ impl World {
 
         result.dummy_world();
         result
+    }
+
+    pub fn debug_stuff(&self) {
+        if self.chunks.len() != 0 {
+            println!("Chunk count: {}", self.chunks.len());
+        // for (_, c) in &self.chunks {
+        //     println!("\tcount: {}\tchunk:{:?}", c.entities.len(), c);
+        // }
+        } else {
+            println!("empty");
+        }
     }
 
     fn dummy_world(&mut self) {
@@ -184,7 +206,13 @@ impl World {
 
     fn is_canonical(&self, rel: f32) -> bool {
         let epsilon = 0.0001;
-        rel >= (-0.5 * self.chunk_side + epsilon) && (rel <= 0.5 * self.chunk_side + epsilon)
+        let min = -0.5 * self.chunk_side - epsilon;
+        let max = 0.5 * self.chunk_side + epsilon;
+        let result = rel >= min && rel <= max;
+        if !result {
+            println!("min: {}, max: {}, current: {}", min, max, rel);
+        }
+        result
     }
 
     fn same_chunk(&self, a: WorldPosition, b: WorldPosition) -> bool {
@@ -224,10 +252,11 @@ impl World {
         };
         let x = (abs_x - (chunk_idx.x * TILES_PER_CHUNK as i32)) as f32 * self.tile_side;
         let y = (abs_y - (chunk_idx.y * TILES_PER_CHUNK as i32)) as f32 * self.tile_side;
-        WorldPosition {
+        let pos = WorldPosition {
             abs: chunk_idx,
             offset: V2::new(x, y),
-        }
+        };
+        self.map_into_chunk_space(pos, V2::default())
     }
 
     pub fn substract(&self, a: WorldPosition, b: WorldPosition) -> WorldDiff {
@@ -245,7 +274,7 @@ impl World {
     pub fn change_entity_chunks(
         &mut self, low_entity_idx: usize, entity: &mut LowEntity, new_p: WorldPosition,
     ) {
-        let old_p = if entity.p.is_valid() && entity.spatial() {
+        let old_p = if entity.p.is_valid() && entity.entity.spatial {
             Some(entity.p)
         } else {
             None
@@ -255,7 +284,7 @@ impl World {
 
         let same_chunk = match (old_p, new_p) {
             (Some(old), Some(new)) => self.same_chunk(old, new),
-            _ => true,
+            _ => false,
         };
 
         if !same_chunk {
@@ -278,10 +307,10 @@ impl World {
 
         if let Some(new) = new_p {
             entity.p = new;
-            entity.set_spatial(true);
+            entity.entity.spatial = true;
         } else {
             entity.p = WorldPosition::default();
-            entity.set_spatial(false);
+            entity.entity.spatial = false;
         }
     }
 }

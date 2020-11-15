@@ -20,6 +20,7 @@ pub struct InputState {
     pub down: bool,
     pub left: bool,
     pub right: bool,
+    pub sword: bool,
 }
 
 pub struct Input {
